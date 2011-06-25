@@ -125,6 +125,7 @@ Library
     Hakyll.Core.Compiler.Internal
     Hakyll.Core.DirectedGraph.Internal
     Hakyll.Core.Rules.Internal
+    Hakyll.Core.Run.Internal
     Hakyll.Web.Page.Internal
     Hakyll.Web.Template.Internal
     Hakyll.Web.Template.Read.Hakyll
