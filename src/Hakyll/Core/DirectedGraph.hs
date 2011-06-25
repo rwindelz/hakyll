@@ -10,15 +10,18 @@ module Hakyll.Core.DirectedGraph
     , neighbours
     , reverse
     , reachableNodes
+    , findCycle
     ) where
 
 import Prelude hiding (reverse)
 import Control.Arrow (second)
+import Control.Monad (msum)
 import Data.Monoid (mconcat)
 import Data.Set (Set)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as M
 import qualified Data.Set as S
+import qualified Prelude as P
 
 import Hakyll.Core.DirectedGraph.Internal
 
@@ -82,3 +85,16 @@ reachableNodes set graph = reachable (setNeighbours set) set
         neighbours' = setNeighbours (sanitize next)
 
     setNeighbours = S.unions . map (`neighbours` graph) . S.toList
+
+-- | Find a cycle, starting from a certain node
+--
+findCycle :: Ord a => a -> DirectedGraph a -> [a]
+findCycle i graph = fromMaybe [] $ findCycle' [] S.empty i
+  where
+    findCycle' stack visited x
+        | x `S.member` visited = Just $ P.reverse stack'
+        | otherwise = msum $ map (findCycle' stack' visited') nb
+      where
+        nb = S.toList $ neighbours x graph
+        stack' = x : stack
+        visited' = S.insert x visited
