@@ -13,13 +13,21 @@ import Hakyll.Core.DependencyAnalyzer
 
 tests :: [Test]
 tests =
-    [ testCase "step [1]" step1
-    , testCase "step [2]" step2
+    [ testCase "step [1]" takeAll01
+    -- , testCase "step [2]" step2
     ]
 
-step1 :: Assertion
-step1 = Just (S.fromList [1, 2, 5, 6, 7, 8, 9]) @?=
-    stepAll (makeDependencyAnalyzer graph isOutOfDate prev)
+-- Debugging method
+takeAll :: Ord a => DependencyAnalyzer a -> [a]
+takeAll analyzer = case takeReady analyzer of
+    Nothing     -> []
+    Just (x, a) -> x : takeAll (putDone x a)
+
+-- | General order testing
+--
+takeAll01 :: Assertion
+takeAll01 = [3, 4, 2, 6, 7, 1, 5, 8, 9] @=?
+    takeAll (makeDependencyAnalyzer graph (const True) mempty)
   where
     node = curry $ second S.fromList
 
@@ -35,22 +43,38 @@ step1 = Just (S.fromList [1, 2, 5, 6, 7, 8, 9]) @?=
         , node 7 []
         ]
 
-    prev = fromList
-        [ node 8 [2, 4, 6]
-        , node 2 [4, 3]
-        , node 4 [3]
-        , node 6 [4]
-        , node 3 []
-        , node 9 [5]
-        , node 5 [7]
-        , node 1 [7]
-        , node 7 [8]
+-- | A few out of date items
+--
+takeAll02 :: Assertion
+takeAll02 = [2, 3, 4] @=?
+    takeAll (makeDependencyAnalyzer graph isOutOfDate graph)
+  where
+    node = curry $ second S.fromList
+
+    isOutOfDate = (== 2)
+
+    graph = fromList
+        [ node (1 :: Int) []
+        , node 2 [1]
+        , node 3 [1, 2]
+        , node 4 [1, 2]
         ]
 
-    isOutOfDate = (`elem` [5, 2, 6])
+ana = (makeDependencyAnalyzer graph isOutOfDate graph)
+  where
+    node = curry $ second S.fromList
 
+    isOutOfDate = (== 2)
+
+    graph = fromList
+        [ node (1 :: Int) []
+        , node 2 [1]
+        , node 3 [1, 2]
+        , node 4 [1, 2]
+        ]
+{-
 step2 :: Assertion
-step2 = Nothing @?= stepAll (makeDependencyAnalyzer graph isOutOfDate mempty)
+step2 = Nothing @?= takeAll (makeDependencyAnalyzer graph isOutOfDate mempty)
   where
     node = curry $ second S.fromList
 
@@ -68,3 +92,4 @@ step2 = Nothing @?= stepAll (makeDependencyAnalyzer graph isOutOfDate mempty)
         ]
 
     isOutOfDate = const True
+-}

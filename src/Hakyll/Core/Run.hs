@@ -55,7 +55,7 @@ run configuration rules = do
         compilers = rulesCompilers ruleSet
 
         -- Extract the reader/state
-        reader = unRuntime $ addNewCompilers compilers
+        reader = unRuntime $ addNewCompilers compilers >> stepAnalyzer
         stateT = runReaderT reader $ RuntimeEnvironment
                     { hakyllLogger           = logger
                     , hakyllConfiguration    = configuration
@@ -141,19 +141,18 @@ addNewCompilers newCompilers = Runtime $ do
         , hakyllCompilers = M.union oldCompilers (M.fromList newCompilers)
         }
 
-    -- Continue
-    unRuntime stepAnalyzer
-
 stepAnalyzer :: Runtime ()
 stepAnalyzer = Runtime $ do
     -- Step the analyzer
     state <- get
-    let (signal, analyzer') = step $ hakyllAnalyzer state
-    put $ state { hakyllAnalyzer = analyzer' }
-
-    case signal of Done      -> return ()
-                   Cycle c   -> unRuntime $ dumpCycle c
-                   Build id' -> unRuntime $ build id'
+    case takeReady (hakyllAnalyzer state) of
+        Nothing     -> return ()
+        Just (x, a) -> do
+            put $ state {hakyllAnalyzer = a}
+            unRuntime $ build x
+            state' <- get
+            put $ state' {hakyllAnalyzer = putDone x (hakyllAnalyzer state')}
+            unRuntime stepAnalyzer
 
 -- | Dump cyclic error and quit
 --
@@ -197,9 +196,6 @@ build id' = Runtime $ do
                     liftIO $ makeDirectories path
                     liftIO $ write path compiled
 
-            -- Continue for the remaining compilers
-            unRuntime stepAnalyzer
-
         -- Metacompiler, slightly more complicated
         Right (MetaCompileRule newCompilers) ->
             -- Actually I was just kidding, it's not hard at all
@@ -208,4 +204,3 @@ build id' = Runtime $ do
         -- Some error happened, log and continue
         Left err -> do
             thrown logger err 
-            unRuntime stepAnalyzer
