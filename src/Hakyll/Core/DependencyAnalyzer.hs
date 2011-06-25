@@ -3,6 +3,7 @@ module Hakyll.Core.DependencyAnalyzer
     , makeDependencyAnalyzer
     , takeReady
     , putDone
+    , findCycle
     ) where
 
 import Prelude hiding (reverse)
@@ -11,7 +12,8 @@ import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Monoid (Monoid, mappend, mempty)
 
-import Hakyll.Core.DirectedGraph
+import Hakyll.Core.DirectedGraph (DirectedGraph)
+import qualified Hakyll.Core.DirectedGraph as DG
 
 -- | This data structure represents the state of the dependency analyzer. It
 -- holds a complete graph in 'analyzerGraph', which always contains all items,
@@ -66,7 +68,7 @@ makeDependencyAnalyzer graph isOutOfDate prev = prepare $
     DependencyAnalyzer graph outOfDate remains S.empty S.empty prev
   where
     -- Construct the remains set by filtering using the given predicate
-    remains = S.fromList $ map fst $ toList graph
+    remains = S.fromList $ map fst $ DG.toList graph
     outOfDate = S.filter isOutOfDate remains
 
 -- | Prepare a dependency analyzer for use
@@ -80,13 +82,13 @@ findOutOfDate (DependencyAnalyzer graph outOfDate remains ready done prev) =
   where
     -- Select the nodes which are reachable from the remaining nodes in the
     -- reversed dependency graph: these are the indirectly out-of-date items
-    outOfDate' = reachableNodes (outOfDate `S.union` changedDeps) $
-        reverse graph
+    outOfDate' = DG.reachableNodes (outOfDate `S.union` changedDeps) $
+        DG.reverse graph
 
     -- For all nodes in the graph, check which items have a different dependency
     -- set compared to the previous run
     changedDeps = S.fromList $ map fst $
-        filter (uncurry (/=) . first (`neighbours` prev)) $ toList graph
+        filter (uncurry (/=) . first (`DG.neighbours` prev)) $ DG.toList graph
 
 -- | Find items which are ready to be compiled
 --
@@ -107,7 +109,7 @@ expandReady (DependencyAnalyzer graph outOfDate remains ready done prev) =
   where
     ready' = ready `S.union` S.filter isReady remains
     remains' = S.difference remains ready'
-    isReady x = all (`S.member` done) $ S.toList $ neighbours x graph
+    isReady x = all (`S.member` done) $ S.toList $ DG.neighbours x graph
 
 -- | Shrink the ready set by removing items which have been compiled already
 --
@@ -142,3 +144,8 @@ putDone x analyzer = analyzer'
   where
     done = analyzerDone analyzer
     analyzer' = analyzer {analyzerDone = S.insert x done}
+
+-- | Check for cycles
+--
+findCycle :: Ord a => DependencyAnalyzer a -> Maybe [a]
+findCycle = DG.findCycle . analyzerGraph

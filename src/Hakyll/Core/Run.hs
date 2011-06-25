@@ -8,10 +8,12 @@ module Hakyll.Core.Run
 import Prelude hiding (reverse)
 import Control.Monad (filterM, forM_)
 import Control.Monad.Trans (liftIO)
+import Control.Monad.Error (runErrorT, throwError)
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Reader (ReaderT, runReaderT, ask)
 import Control.Monad.State.Strict (StateT, runStateT, get, put)
 import Data.Map (Map)
+import Data.List (intercalate)
 import qualified Data.Map as M
 import Data.Monoid (mempty, mappend)
 import System.FilePath ((</>))
@@ -26,12 +28,13 @@ import Hakyll.Core.Resource
 import Hakyll.Core.Resource.Provider
 import Hakyll.Core.Resource.Provider.File
 import Hakyll.Core.Rules.Internal
-import Hakyll.Core.DirectedGraph
 import Hakyll.Core.DependencyAnalyzer
 import Hakyll.Core.Writable
 import Hakyll.Core.Store
 import Hakyll.Core.Configuration
 import Hakyll.Core.Logger
+import Hakyll.Core.Run.Internal
+import qualified Hakyll.Core.DirectedGraph as DG
 
 -- | Run all rules needed, return the rule set used
 --
@@ -55,7 +58,8 @@ run configuration rules = do
         compilers = rulesCompilers ruleSet
 
         -- Extract the reader/state
-        reader = unRuntime $ addNewCompilers compilers >> stepAnalyzer
+        reader = runErrorT $ unRuntime $
+            addNewCompilers compilers >> stepAnalyzer
         stateT = runReaderT reader $ RuntimeEnvironment
                     { hakyllLogger           = logger
                     , hakyllConfiguration    = configuration
@@ -66,10 +70,13 @@ run configuration rules = do
                     }
 
     -- Run the program and fetch the resulting state
-    ((), state') <- runStateT stateT $ RuntimeState
+    (x, state') <- runStateT stateT $ RuntimeState
         { hakyllAnalyzer  = makeDependencyAnalyzer mempty (const False) oldGraph
         , hakyllCompilers = M.empty
         }
+
+    -- Print possible errors
+    case x of Left e -> thrown logger e; Right _ -> return ()
 
     -- We want to save the final dependency graph for the next run
     storeSet store "Hakyll.Core.Run.run" "dependencies" $
@@ -78,24 +85,6 @@ run configuration rules = do
     -- Flush and return
     flushLogger logger
     return ruleSet
-
-data RuntimeEnvironment = RuntimeEnvironment
-    { hakyllLogger           :: Logger
-    , hakyllConfiguration    :: HakyllConfiguration
-    , hakyllRoutes           :: Routes
-    , hakyllResourceProvider :: ResourceProvider
-    , hakyllStore            :: Store
-    , hakyllFirstRun         :: Bool
-    }
-
-data RuntimeState = RuntimeState
-    { hakyllAnalyzer  :: DependencyAnalyzer (Identifier ())
-    , hakyllCompilers :: Map (Identifier ()) (Compiler () CompileRule)
-    }
-
-newtype Runtime a = Runtime
-    { unRuntime :: ReaderT RuntimeEnvironment (StateT RuntimeState IO) a
-    } deriving (Functor, Applicative, Monad)
 
 -- | Add a number of compilers and continue using these compilers
 --
@@ -123,7 +112,7 @@ addNewCompilers newCompilers = Runtime $ do
             in (id', deps)
 
         -- Create the dependency graph
-        newGraph = fromList dependencies
+        newGraph = DG.fromList dependencies
 
     -- Check which items have been modified
     modified <- fmap S.fromList $ flip filterM (map fst newCompilers) $
@@ -134,6 +123,12 @@ addNewCompilers newCompilers = Runtime $ do
     let newAnalyzer = makeDependencyAnalyzer newGraph checkModified $
             analyzerPreviousGraph oldAnalyzer
         analyzer = mappend oldAnalyzer newAnalyzer
+
+    -- Check for cycles
+    case findCycle analyzer of
+        Nothing -> return ()
+        Just c  -> throwError $ "Dependency cycle: " ++
+            intercalate " -> " (map show c)
 
     -- Update the state
     put $ RuntimeState
@@ -153,15 +148,6 @@ stepAnalyzer = Runtime $ do
             state' <- get
             put $ state' {hakyllAnalyzer = putDone x (hakyllAnalyzer state')}
             unRuntime stepAnalyzer
-
--- | Dump cyclic error and quit
---
-dumpCycle :: [Identifier ()] -> Runtime ()
-dumpCycle cycle' = Runtime $ do
-    logger <- hakyllLogger <$> ask
-    section logger "Dependency cycle detected! Conflict:"
-    forM_ (zip cycle' $ drop 1 cycle') $ \(x, y) ->
-        report logger $ show x ++ " -> " ++ show y
 
 build :: Identifier () -> Runtime ()
 build id' = Runtime $ do
@@ -201,6 +187,5 @@ build id' = Runtime $ do
             -- Actually I was just kidding, it's not hard at all
             unRuntime $ addNewCompilers newCompilers
 
-        -- Some error happened, log and continue
-        Left err -> do
-            thrown logger err 
+        -- Some error happened
+        Left err -> throwError err
