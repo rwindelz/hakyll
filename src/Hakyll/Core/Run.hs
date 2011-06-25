@@ -11,7 +11,7 @@ import Control.Monad.Trans (liftIO)
 import Control.Monad.Error (runErrorT, throwError)
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad.Reader (ReaderT, runReaderT, ask)
-import Control.Monad.State.Strict (StateT, runStateT, get, put)
+import Control.Monad.State.Strict (StateT, runStateT, get, put, modify)
 import Data.Map (Map)
 import Data.List (intercalate)
 import qualified Data.Map as M
@@ -34,6 +34,7 @@ import Hakyll.Core.Store
 import Hakyll.Core.Configuration
 import Hakyll.Core.Logger
 import Hakyll.Core.Run.Internal
+import Hakyll.Core.Run.Workers
 import qualified Hakyll.Core.DirectedGraph as DG
 
 -- | Run all rules needed, return the rule set used
@@ -42,11 +43,12 @@ run :: HakyllConfiguration -> RulesM a -> IO RuleSet
 run configuration rules = do
     logger <- makeLogger putStrLn
 
-    section logger "Initialising"
-    store <- timed logger "Creating store" $
-        makeStore $ storeDirectory configuration
-    provider <- timed logger "Creating provider" $
-        fileResourceProvider configuration
+    message logger "Creating store"
+    store <- makeStore $ storeDirectory configuration
+    message logger "Creating provider"
+    provider <- fileResourceProvider configuration
+    message logger "Creating workers"
+    workers <- makeWorkers
 
     -- Fetch the old graph from the store. If we don't find it, we consider this
     -- to be the first run
@@ -59,7 +61,7 @@ run configuration rules = do
 
         -- Extract the reader/state
         reader = runErrorT $ unRuntime $
-            addNewCompilers compilers >> stepAnalyzer
+            addNewCompilers compilers >> run'
         stateT = runReaderT reader $ RuntimeEnvironment
                     { hakyllLogger           = logger
                     , hakyllConfiguration    = configuration
@@ -67,16 +69,18 @@ run configuration rules = do
                     , hakyllResourceProvider = provider
                     , hakyllStore            = store
                     , hakyllFirstRun         = firstRun
+                    , hakyllWorkers          = workers
                     }
 
     -- Run the program and fetch the resulting state
     (x, state') <- runStateT stateT $ RuntimeState
         { hakyllAnalyzer  = makeDependencyAnalyzer mempty (const False) oldGraph
         , hakyllCompilers = M.empty
+        , hakyllRunning   = S.empty
         }
 
     -- Print possible errors
-    case x of Left e -> thrown logger e; Right _ -> return ()
+    case x of Left e -> message logger e; Right _ -> return ()
 
     -- We want to save the final dependency graph for the next run
     storeSet store "Hakyll.Core.Run.run" "dependencies" $
@@ -94,7 +98,7 @@ addNewCompilers :: [(Identifier (), Compiler () CompileRule)]
 addNewCompilers newCompilers = Runtime $ do
     -- Get some information
     logger <- hakyllLogger <$> ask
-    section logger "Adding new compilers"
+    message logger "Adding new compilers"
     provider <- hakyllResourceProvider <$> ask
     store <- hakyllStore <$> ask
     firstRun <- hakyllFirstRun <$> ask
@@ -102,6 +106,7 @@ addNewCompilers newCompilers = Runtime $ do
     -- Old state information
     oldCompilers <- hakyllCompilers <$> get
     oldAnalyzer <- hakyllAnalyzer <$> get
+    oldRunning <- hakyllRunning <$> get
 
     let -- All known compilers
         universe = M.keys oldCompilers ++ map fst newCompilers
@@ -120,7 +125,7 @@ addNewCompilers newCompilers = Runtime $ do
     let checkModified = if firstRun then const True else (`S.member` modified)
 
     -- Create a new analyzer and append it to the currect one
-    let newAnalyzer = makeDependencyAnalyzer newGraph checkModified $
+        newAnalyzer = makeDependencyAnalyzer newGraph checkModified $
             analyzerPreviousGraph oldAnalyzer
         analyzer = mappend oldAnalyzer newAnalyzer
 
@@ -134,58 +139,75 @@ addNewCompilers newCompilers = Runtime $ do
     put $ RuntimeState
         { hakyllAnalyzer  = analyzer
         , hakyllCompilers = M.union oldCompilers (M.fromList newCompilers)
+        , hakyllRunning   = oldRunning
         }
 
-stepAnalyzer :: Runtime ()
-stepAnalyzer = Runtime $ do
+run' :: Runtime ()
+run' = Runtime $ do
     -- Step the analyzer
     state <- get
     case takeReady (hakyllAnalyzer state) of
-        Nothing     -> return ()
+        -- No compilers are ready. Check if we have compilers running.
+        Nothing -> if (S.null $ hakyllRunning state)
+            -- No compilers running. We are done.
+            then return ()
+            -- Compilers are still running
+            else unRuntime $ endCompiler >> run'
         Just (x, a) -> do
             put $ state {hakyllAnalyzer = a}
-            unRuntime $ build x
-            state' <- get
-            put $ state' {hakyllAnalyzer = putDone x (hakyllAnalyzer state')}
-            unRuntime stepAnalyzer
+            unRuntime $ startCompiler x >> run'
 
-build :: Identifier () -> Runtime ()
-build id' = Runtime $ do
+endCompiler :: Runtime ()
+endCompiler = Runtime $ do
+    workers <- hakyllWorkers <$> ask
+    -- Wait for a compiler
+    (id', rule) <- liftIO $ readJob workers
+    -- Remove it from the running set and put it as done
+    modify $ \s -> s
+        { hakyllRunning  = S.delete id' (hakyllRunning s)
+        , hakyllAnalyzer = putDone id' (hakyllAnalyzer s)
+        }
+    -- If needed, add new compilers
+    case rule of Right (MetaCompileRule n) -> unRuntime $ addNewCompilers n
+                 Left err                  -> throwError err
+                 _                         -> return ()
+
+startCompiler :: Identifier () -> Runtime ()
+startCompiler id' = Runtime $ do
     logger <- hakyllLogger <$> ask
     routes <- hakyllRoutes <$> ask
     provider <- hakyllResourceProvider <$> ask
     store <- hakyllStore <$> ask
+    destination <- destinationDirectory . hakyllConfiguration <$> ask
+    workers <- hakyllWorkers <$> ask
     compilers <- hakyllCompilers <$> get
 
-    section logger $ "Compiling " ++ show id'
+    -- Set as running
+    modify $ \s -> s {hakyllRunning = S.insert id' (hakyllRunning s)}
 
-    -- Fetch the right compiler from the map
-    let compiler = compilers M.! id'
+    liftIO $ writeJob workers $ do
+        -- Fetch the right compiler from the map
+        let compiler = compilers M.! id'
 
-    -- Check if the resource was modified
-    isModified <- liftIO $ resourceModified provider store $ fromIdentifier id'
+        -- Check if the resource was modified
+        isModified <- liftIO $ resourceModified provider store $ fromIdentifier id'
 
-    -- Run the compiler
-    result <- timed logger "Total compile time" $ liftIO $
-        runCompiler compiler id' provider (M.keys compilers) routes
-                    store isModified logger
+        -- Run the compiler
+        result <- liftIO $ runCompiler compiler id' provider (M.keys compilers)
+            routes store isModified logger
 
-    case result of
-        -- Compile rule for one item, easy stuff
-        Right (CompileRule compiled) -> do
-            case runRoutes routes id' of
-                Nothing  -> return ()
-                Just url -> timed logger ("Routing to " ++ url) $ do
-                    destination <-
-                        destinationDirectory . hakyllConfiguration <$> ask
-                    let path = destination </> url
-                    liftIO $ makeDirectories path
-                    liftIO $ write path compiled
+        case result of
+            -- Compile rule for one item, easy stuff
+            Right (CompileRule compiled) -> do
+                case runRoutes routes id' of
+                    Nothing  -> return ()
+                    Just url -> do
+                        messageAbout logger id' $ "Routing to " ++ url
+                        let path = destination </> url
+                        liftIO $ makeDirectories path
+                        liftIO $ write path compiled
 
-        -- Metacompiler, slightly more complicated
-        Right (MetaCompileRule newCompilers) ->
-            -- Actually I was just kidding, it's not hard at all
-            unRuntime $ addNewCompilers newCompilers
+            -- Metacompile rule or error. We don't need to deal with it here
+            _ -> return ()
 
-        -- Some error happened
-        Left err -> throwError err
+        return (id', result)

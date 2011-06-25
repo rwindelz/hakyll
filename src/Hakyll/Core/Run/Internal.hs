@@ -11,17 +11,22 @@ import Control.Applicative (Applicative)
 import Control.Monad.Reader (ReaderT)
 import Control.Monad.State.Strict (StateT)
 import Control.Monad.Error (ErrorT)
+import Control.Concurrent.MVar (MVar)
 import Data.Map (Map)
+import Data.Set (Set)
 
 import Hakyll.Core.Routes
 import Hakyll.Core.Identifier
 import Hakyll.Core.Compiler
+import Hakyll.Core.Compiler.Internal
 import Hakyll.Core.Resource.Provider
 import Hakyll.Core.Rules.Internal
 import Hakyll.Core.DependencyAnalyzer
 import Hakyll.Core.Store
 import Hakyll.Core.Configuration
 import Hakyll.Core.Logger
+import Hakyll.Core.Logger
+import Hakyll.Core.Run.Workers
 
 data RuntimeEnvironment = RuntimeEnvironment
     { hakyllLogger           :: Logger
@@ -30,11 +35,15 @@ data RuntimeEnvironment = RuntimeEnvironment
     , hakyllResourceProvider :: ResourceProvider
     , hakyllStore            :: Store
     , hakyllFirstRun         :: Bool
+    , hakyllWorkers          :: Workers (Identifier (), Throwing CompileRule)
     }
 
 data RuntimeState = RuntimeState
     { hakyllAnalyzer  :: DependencyAnalyzer (Identifier ())
-    , hakyllCompilers :: Map (Identifier ()) (Compiler () CompileRule)
+    , -- | Known compilers
+      hakyllCompilers :: Map (Identifier ()) (Compiler () CompileRule)
+    , -- | Currently running compilers
+      hakyllRunning   :: Set (Identifier ())
     }
 
 newtype Runtime a = Runtime

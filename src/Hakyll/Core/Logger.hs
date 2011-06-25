@@ -5,10 +5,8 @@ module Hakyll.Core.Logger
     ( Logger
     , makeLogger
     , flushLogger
-    , section
-    , timed
-    , report
-    , thrown
+    , message
+    , messageAbout
     ) where
 
 import Control.Monad (forever)
@@ -17,9 +15,8 @@ import Control.Applicative (pure, (<$>), (<*>))
 import Control.Concurrent (forkIO)
 import Control.Concurrent.Chan (Chan, newChan, readChan, writeChan)
 import Control.Concurrent.MVar (MVar, newEmptyMVar, takeMVar, putMVar)
-import Text.Printf (printf)
 
-import Data.Time (getCurrentTime, diffUTCTime)
+import Hakyll.Core.Identifier
 
 -- | Logger structure. Very complicated.
 --
@@ -55,46 +52,11 @@ flushLogger logger = do
 
 -- | Send a raw message to the logger
 --
-message :: Logger -> String -> IO ()
-message logger = writeChan (loggerChan logger) . Just
+message :: MonadIO m => Logger -> String -> m ()
+message logger = liftIO . writeChan (loggerChan logger) . Just
 
--- | Start a section in the log
+-- | Send a raw message to the logger
 --
-section :: MonadIO m
-        => Logger  -- ^ Logger
-        -> String  -- ^ Section name
-        -> m ()    -- ^ No result
-section logger = liftIO . message logger
-
--- | Execute a monadic action and log the duration
---
-timed :: MonadIO m
-      => Logger  -- ^ Logger
-      -> String  -- ^ Message
-      -> m a     -- ^ Action
-      -> m a     -- ^ Timed and logged action
-timed logger msg action = do
-    start <- liftIO getCurrentTime
-    !result <- action
-    stop <- liftIO getCurrentTime
-    let diff = fromEnum $ diffUTCTime stop start
-        ms = diff `div` 10 ^ (9 :: Int)
-        formatted = printf "  [%4dms] %s" ms msg
-    liftIO $ message logger formatted
-    return result
-
--- | Log something at the same level as 'timed', but without the timing
---
-report :: MonadIO m
-       => Logger  -- ^ Logger
-       -> String  -- ^ Message
-       -> m ()    -- ^ No result
-report logger msg = liftIO $ message logger $ "  [      ] " ++ msg
-
--- | Log an error that was thrown in the compilation phase
---
-thrown :: MonadIO m
-       => Logger  -- ^ Logger
-       -> String  -- ^ Message
-       -> m ()    -- ^ No result
-thrown logger msg = liftIO $ message logger $ "  [ ERROR] " ++ msg
+messageAbout :: MonadIO m => Logger -> Identifier a -> String -> m ()
+messageAbout logger identifier msg = message logger $
+    "[" ++ show identifier ++ "] " ++ msg

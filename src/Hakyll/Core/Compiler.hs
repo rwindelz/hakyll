@@ -109,7 +109,6 @@ module Hakyll.Core.Compiler
     , unsafeCompiler
     , traceShowCompiler
     , mapCompiler
-    , timedCompiler
     , byExtension
     ) where
 
@@ -301,7 +300,8 @@ cached name (Compiler d j) = Compiler d $ const $ CompilerM $ do
     identifier <- castIdentifier . compilerIdentifier <$> ask
     store <- compilerStore <$> ask
     modified <- compilerResourceModified <$> ask
-    report logger $ "Checking cache: " ++ if modified then "modified" else "OK"
+    messageAbout logger identifier $
+        "Cache: " ++ if modified then "modified" else "OK"
     if modified
         then do v <- unCompilerM $ j $ fromIdentifier identifier
                 liftIO $ storeSet store name identifier v
@@ -323,7 +323,7 @@ unsafeCompiler f = fromJob $ CompilerM . liftIO . f
 traceShowCompiler :: Show a => Compiler a a
 traceShowCompiler = fromJob $ \x -> CompilerM $ do
     logger <- compilerLogger <$> ask
-    report logger $ show x
+    message logger $ show x
     return x
 
 -- | Map over a compiler
@@ -331,15 +331,6 @@ traceShowCompiler = fromJob $ \x -> CompilerM $ do
 mapCompiler :: Compiler a b
             -> Compiler [a] [b]
 mapCompiler (Compiler d j) = Compiler d $ mapM j
-
--- | Log and time a compiler
---
-timedCompiler :: String        -- ^ Message
-              -> Compiler a b  -- ^ Compiler to time
-              -> Compiler a b  -- ^ Resulting compiler
-timedCompiler msg (Compiler d j) = Compiler d $ \x -> CompilerM $ do
-    logger <- compilerLogger <$> ask
-    timed logger msg $ unCompilerM $ j x
 
 -- | Choose a compiler by extension
 --
