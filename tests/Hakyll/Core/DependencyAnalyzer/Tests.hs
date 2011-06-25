@@ -1,10 +1,8 @@
 module Hakyll.Core.DependencyAnalyzer.Tests where
 
-import Prelude
 import Control.Arrow (second)
 import Data.Monoid (mempty)
 import qualified Data.Set as S
-import qualified Prelude as P
 
 import Test.Framework
 import Test.Framework.Providers.HUnit
@@ -18,26 +16,19 @@ tests =
     [ testCase "takeAll [1]" takeAll01
     , testCase "takeAll [2]" takeAll02
     , testCase "takeAll [3]" takeAll03
-    , testCase "takeAll [4]" takeAll04
     ]
-
-data AnalyzerTest a = TestDone [a] | TestCycle [a]
-                    deriving (Show, Eq)
 
 -- | Debugging method
 --
-takeAll :: (Show a, Ord a) => DependencyAnalyzer a -> AnalyzerTest a
-takeAll = takeAll' []
-  where
-    takeAll' s a = case takeReady a of
-        (Done, _)    -> TestDone (P.reverse s)
-        (Cycle c, _) -> TestCycle c
-        (Ok x, a')   -> takeAll' (x : s) (putDone x a')
+takeAll :: (Show a, Ord a) => DependencyAnalyzer a -> [a]
+takeAll a = case takeReady a of
+    Nothing      -> []
+    Just (x, a') -> x : takeAll (putDone x a')
 
 -- | General order testing
 --
 takeAll01 :: Assertion
-takeAll01 = TestDone [3, 4, 2, 6, 7, 1, 5, 8, 9] @=?
+takeAll01 = [3, 4, 2, 6, 7, 1, 5, 8, 9] @=?
     takeAll (makeDependencyAnalyzer graph (const True) mempty)
   where
     node = curry $ second S.fromList
@@ -57,7 +48,7 @@ takeAll01 = TestDone [3, 4, 2, 6, 7, 1, 5, 8, 9] @=?
 -- | A few out of date items
 --
 takeAll02 :: Assertion
-takeAll02 = TestDone [2, 3, 4] @=?
+takeAll02 = [2, 3, 4] @=?
     takeAll (makeDependencyAnalyzer graph isOutOfDate graph)
   where
     node = curry $ second S.fromList
@@ -75,7 +66,7 @@ takeAll02 = TestDone [2, 3, 4] @=?
 -- run.
 --
 takeAll03 :: Assertion
-takeAll03 = TestDone [1, 2, 5] @=?
+takeAll03 = [1, 2, 5] @=?
     takeAll (makeDependencyAnalyzer graph (const False) prev)
   where
     node = curry $ second S.fromList
@@ -94,19 +85,4 @@ takeAll03 = TestDone [1, 2, 5] @=?
         , node 3 []
         , node 4 []
         , node 5 [1]
-        ]
-
--- | Dependency cycle
---
-takeAll04 :: Assertion
-takeAll04 = TestCycle [1, 4, 2, 1] @=?
-    takeAll (makeDependencyAnalyzer graph (const True) mempty)
-  where
-    node = curry $ second S.fromList
-
-    graph = fromList
-        [ node (1 :: Int) [3, 4]
-        , node 2 [1]
-        , node 3 []
-        , node 4 [2]
         ]

@@ -1,6 +1,5 @@
 module Hakyll.Core.DependencyAnalyzer
     ( DependencyAnalyzer (..)
-    , DependencyResult (..)
     , makeDependencyAnalyzer
     , takeReady
     , putDone
@@ -55,9 +54,6 @@ instance (Ord a, Show a) => Monoid (DependencyAnalyzer a) where
         (analyzerReady x `mappend` analyzerReady y)
         (analyzerDone x `mappend` analyzerDone y)
         (analyzerPreviousGraph x `mappend` analyzerPreviousGraph y)
-
-data DependencyResult a = Ok a | Cycle [a] | Done
-                        deriving (Show, Eq)
 
 -- | Smart constructor
 --
@@ -125,22 +121,19 @@ expandDone (DependencyAnalyzer graph outOfDate remains ready done prev) =
 -- | Pick an item which is ready to be compiled
 --
 takeReady :: Ord a => DependencyAnalyzer a
-          -> (DependencyResult a, DependencyAnalyzer a)
+          -> Maybe (a, DependencyAnalyzer a)
 takeReady = takeReady' . findReady
 
 -- | Pick an item which is ready to be compiled
 --
 takeReady' :: Ord a => DependencyAnalyzer a
-           -> (DependencyResult a, DependencyAnalyzer a)
+           -> Maybe (a, DependencyAnalyzer a)
 takeReady' analyzer
-    | S.null ready && S.null remains = (Done, analyzer)
-    | S.null ready = (Cycle cycle', analyzer)
-    | otherwise = (Ok (S.findMin ready), analyzer')
+    | S.null ready = Nothing
+    | otherwise = Just (S.findMin ready, analyzer')
   where
     ready = analyzerReady analyzer
-    remains = analyzerRemains analyzer
     analyzer' = analyzer {analyzerReady = S.deleteMin ready}
-    cycle' = findCycle (S.findMin remains) (analyzerGraph analyzer)
 
 -- | Signal an item as done
 --

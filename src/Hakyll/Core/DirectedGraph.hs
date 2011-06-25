@@ -88,11 +88,11 @@ reachableNodes set graph = reachable (setNeighbours set) set
 
 -- | Find a cycle, starting from a certain node
 --
-findCycle :: Ord a => a -> DirectedGraph a -> [a]
-findCycle i graph = fromMaybe [] $ findCycle' [] S.empty i
+findCycle :: Ord a => DirectedGraph a -> Maybe [a]
+findCycle graph = msum $ map (findCycle' [] S.empty) $ S.toList $ nodes graph
   where
     findCycle' stack visited x
-        | x `S.member` visited = Just $ P.reverse stack'
+        | x `S.member` visited = Just $ dropWhile (/= x) $ P.reverse stack'
         | otherwise = msum $ map (findCycle' stack' visited') nb
       where
         nb = S.toList $ neighbours x graph
