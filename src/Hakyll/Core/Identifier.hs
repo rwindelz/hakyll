@@ -41,6 +41,7 @@ module Hakyll.Core.Identifier
 import Control.Arrow (second)
 import Control.Applicative ((<$>), (<*>))
 import Control.Monad (mplus)
+import Data.Data (Data)
 import Data.Monoid (Monoid, mempty, mappend)
 import Data.List (intercalate)
 
@@ -53,7 +54,7 @@ import Data.Typeable (Typeable)
 data Identifier a = Identifier
     { identifierGroup :: Maybe String
     , identifierPath  :: String
-    } deriving (Eq, Ord, Typeable)
+    } deriving (Data, Eq, Ord, Typeable)
 
 instance Monoid (Identifier a) where
     mempty = Identifier Nothing ""
