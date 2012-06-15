@@ -29,7 +29,7 @@ this list. This list has no particular ordering.
 - <http://projects.haskell.org/diagrams/>,
   [source](http://patch-tag.com/r/byorgey/diagrams-doc/snapshot/current/content/pretty/web/)
 - <http://wunki.org>,
-  [source](https://github.com/wunki/www.wunki.org)
+  [source](https://github.com/wunki/wunki.org)
 - <http://rs.io>,
   [source](https://github.com/robertseaton/rs.io/)
 - <http://www.gwern.net/>,
@@ -38,3 +38,17 @@ this list. This list has no particular ordering.
   [source](https://github.com/ian-ross/blog)
 - <http://blog.coldflake.com/>,
   [source](https://github.com/marcmo/blog.coldflake)
+- <http://deepak.jois.name>,
+  [source](https://github.com/deepakjois/website)
+- <http://sigkill.dk/>,
+  [literate source](http://sigkill.dk/programs/sigkill.html)
+- <http://variadic.me>,
+  [source](https://github.com/eakron/variadic.me)
+- <http://orftz.com>,
+  [source](https://github.com/orftz/orftz.com)
+- <http://citationneeded.me/>,
+  [literate source](http://citationneeded.me/hakyll.html)
+- <http://shakthimaan.com/news.html>,
+  [source](http://gitorious.org/shakthimaan-blog)
+- <http://www.alfredodinapoli.com/>,
+  [source](https://github.com/CharlesStain/alfredodinapoli.com)

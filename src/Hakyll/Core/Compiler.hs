@@ -88,7 +88,7 @@
 -- the type @a@. It is /very/ important that the compiler which produced this
 -- value, produced the right type as well!
 --
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
 module Hakyll.Core.Compiler
     ( Compiler
     , runCompiler
@@ -111,17 +111,19 @@ module Hakyll.Core.Compiler
     , traceShowCompiler
     , mapCompiler
     , timedCompiler
+    , byPattern
     , byExtension
     ) where
 
 import Prelude hiding ((.), id)
-import Control.Arrow ((>>>), (&&&), arr)
+import Control.Arrow ((>>>), (&&&), arr, first)
 import Control.Applicative ((<$>))
+import Control.Exception (SomeException, handle)
 import Control.Monad.Reader (ask)
 import Control.Monad.Trans (liftIO)
 import Control.Monad.Error (throwError)
 import Control.Category (Category, (.), id)
-import Data.Maybe (fromMaybe)
+import Data.List (find)
 import System.FilePath (takeExtension)
 
 import Data.Binary (Binary)
@@ -154,8 +156,9 @@ runCompiler :: Compiler () CompileRule    -- ^ Compiler to run
             -> IO (Throwing CompileRule)  -- ^ Resulting item
 runCompiler compiler id' provider universe routes store modified logger = do
     -- Run the compiler job
-    result <- runCompilerJob compiler id' provider universe
-                             routes store modified logger
+    result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
+        runCompilerJob compiler id' provider universe routes store modified
+            logger
 
     -- Inspect the result
     case result of
@@ -208,12 +211,12 @@ getResourceLBS = getResourceWith resourceLBS
 --
 getResourceWith :: (ResourceProvider -> Resource -> IO a)
                 -> Compiler Resource a
-getResourceWith reader = fromJob $ \resource -> CompilerM $ do
-    let identifier = unResource resource
+getResourceWith reader = fromJob $ \r -> CompilerM $ do
+    let filePath = unResource r
     provider <- compilerResourceProvider <$> ask
-    if resourceExists provider resource
-        then liftIO $ reader provider resource
-        else throwError $ error' identifier
+    if resourceExists provider r
+        then liftIO $ reader provider r
+        else throwError $ error' filePath
   where
     error' id' =  "Hakyll.Core.Compiler.getResourceWith: resource "
                ++ show id' ++ " not found"
@@ -342,15 +345,43 @@ timedCompiler msg (Compiler d j) = Compiler d $ \x -> CompilerM $ do
     logger <- compilerLogger <$> ask
     timed logger msg $ unCompilerM $ j x
 
+-- | Choose a compiler by identifier
+--
+-- For example, assume that most content files need to be compiled
+-- normally, but a select few need an extra step in the pipeline:
+--
+-- > compile $ pageCompiler >>> byPattern id
+-- >     [ ("projects.md", addProjectListCompiler)
+-- >     , ("sitemap.md", addSiteMapCompiler)
+-- >     ]
+--
+byPattern :: Compiler a b                  -- ^ Default compiler
+          -> [(Pattern (), Compiler a b)]  -- ^ Choices
+          -> Compiler a b                  -- ^ Resulting compiler
+byPattern defaultCompiler choices = Compiler deps job
+  where
+    -- Lookup the compiler, give an error when it is not found
+    lookup' identifier = maybe defaultCompiler snd $
+        find (\(p, _) -> matches p identifier) choices
+    -- Collect the dependencies of the choice
+    deps = do
+        identifier <- castIdentifier . dependencyIdentifier <$> ask
+        compilerDependencies $ lookup' identifier
+    -- Collect the job of the choice
+    job x = CompilerM $ do
+        identifier <- castIdentifier . compilerIdentifier <$> ask
+        unCompilerM $ compilerJob (lookup' identifier) x
+
 -- | Choose a compiler by extension
 --
 -- Example:
 --
--- > route   "css/*" $ setExtension "css"
--- > compile "css/*" $ byExtension (error "Not a (S)CSS file")
--- >     [ (".css",  compressCssCompiler)
--- >     , (".scss", sass)
--- >     ]
+-- > match "css/*" $ do
+-- >   route $ setExtension "css"
+-- >   compile $ byExtension (error "Not a (S)CSS file")
+-- >             [ (".css",  compressCssCompiler)
+-- >             , (".scss", sass)
+-- >             ]
 --
 -- This piece of code will select the @compressCssCompiler@ for @.css@ files,
 -- and the @sass@ compiler (defined elsewhere) for @.scss@ files.
@@ -358,17 +389,6 @@ timedCompiler msg (Compiler d j) = Compiler d $ \x -> CompilerM $ do
 byExtension :: Compiler a b              -- ^ Default compiler
             -> [(String, Compiler a b)]  -- ^ Choices
             -> Compiler a b              -- ^ Resulting compiler
-byExtension defaultCompiler choices = Compiler deps job
+byExtension defaultCompiler = byPattern defaultCompiler . map (first extPattern)
   where
-    -- Lookup the compiler, give an error when it is not found
-    lookup' identifier =
-        let extension = takeExtension $ toFilePath identifier
-        in fromMaybe defaultCompiler $ lookup extension choices
-    -- Collect the dependencies of the choice
-    deps = do
-        identifier <- dependencyIdentifier <$> ask
-        compilerDependencies $ lookup' identifier
-    -- Collect the job of the choice
-    job x = CompilerM $ do
-        identifier <- compilerIdentifier <$> ask
-        unCompilerM $ compilerJob (lookup' identifier) x
+    extPattern c = predicate $ (== c) . takeExtension . toFilePath

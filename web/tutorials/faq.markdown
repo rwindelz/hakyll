@@ -1,5 +1,6 @@
 ---
 title: FAQ
+author: Jasper Van der Jeugt
 ---
 
 ## "File name does not match module name" on Mac OS
@@ -44,10 +45,12 @@ And using this instead of `pageCompiler` should solve the issue.
 
 ## Does Hakyll support syntax highlighting?
 
-Syntax highlighting is enabled by default in Hakyll. However, you also need to
-enable it in pandoc. If no syntax highlighting shows up, try
+Syntax highlighting is enabled by default in Hakyll if you are using a somewhat
+recent version of Pandoc (1.9 and onwards). Note that you also need to include
+some CSS in order for this to work! This site, for example, uses the [default
+Pandoc syntax CSS file][syntax-css].
 
-    [jasper@phoenix] cabal install --reinstall -fhighlighting pandoc
+[syntax-css]: https://github.com/jaspervdj/hakyll/blob/master/web/css/syntax.css
 
 ## When should I rebuild and when should I build?
 
@@ -63,20 +66,3 @@ This means that when you upload your site, it will usually transfer all files --
 this can generate more traffic than necessary, since it is possible that some
 files were not actually modified. If you use `rsync`, you can counter this using
 the `--checksum` option.
-
-## Problem with regex-pcre dependency on Mac OS
-
-Hakyll requires [regex-pcre], which might fail to build on Mac OS. To solve
-this problem, make sure the [pcre] C library is installed (via homebrew or
-macports). Then install [regex-pcre] using:
-
-    cabal install --extra-include-dirs=/usr/local/include regex-pcre
-
-or
-
-    cabal install --extra-include-dirs=/opt/local/include regex-pcre
-
-...and proceed to install Hakyll the regular way.
-
-[regex-pcre]: http://hackage.haskell.org/package/regex-pcre
-[pcre]: http://www.pcre.org/
