@@ -130,17 +130,18 @@ import Data.Binary (Binary)
 import Data.Typeable (Typeable)
 import Data.ByteString.Lazy (ByteString)
 
+import Hakyll.Core.CompiledItem
+import Hakyll.Core.Compiler.Internal
 import Hakyll.Core.Identifier
 import Hakyll.Core.Identifier.Pattern
-import Hakyll.Core.CompiledItem
-import Hakyll.Core.Writable
+import Hakyll.Core.Logger
 import Hakyll.Core.Resource
 import Hakyll.Core.Resource.Provider
-import Hakyll.Core.Compiler.Internal
-import Hakyll.Core.Store
-import Hakyll.Core.Rules.Internal
 import Hakyll.Core.Routes
-import Hakyll.Core.Logger
+import Hakyll.Core.Rules.Internal
+import Hakyll.Core.Store (Store)
+import Hakyll.Core.Writable
+import qualified Hakyll.Core.Store as Store
 
 -- | Run a compiler, yielding the resulting target and it's dependencies. This
 -- version of 'runCompilerJob' also stores the result
@@ -166,8 +167,7 @@ runCompiler compiler id' provider universe routes store modified logger = do
         -- before we return control. This makes sure the compiled item can later
         -- be accessed by e.g. require.
         Right (CompileRule (CompiledItem x)) ->
-            storeSet store "Hakyll.Core.Compiler.runCompiler"
-                     (castIdentifier id') x
+            Store.set store ["Hakyll.Core.Compiler.runCompiler", show id'] x
 
         -- Otherwise, we do nothing here
         _ -> return ()
@@ -227,20 +227,16 @@ getDependency :: (Binary a, Writable a, Typeable a)
               => Identifier a -> CompilerM a
 getDependency id' = CompilerM $ do
     store <- compilerStore <$> ask
-    result <- liftIO $ storeGet store "Hakyll.Core.Compiler.runCompiler" id'
+    result <- liftIO $ Store.get store
+        ["Hakyll.Core.Compiler.runCompiler", show id']
     case result of
-        NotFound      -> throwError notFound
-        WrongType e r -> throwError $ wrongType e r
-        Found x       -> return x
+        Nothing -> throwError notFound
+        Just x  -> return x
   where
     notFound =
         "Hakyll.Core.Compiler.getDependency: " ++ show id' ++ " was " ++
         "not found in the cache, the cache might be corrupted or " ++
         "the item you are referring to might not exist"
-    wrongType e r =
-        "Hakyll.Core.Compiler.getDependency: " ++ show id' ++ " was found " ++
-        "in the cache, but does not have the right type: expected " ++ show e ++
-        " but got " ++ show r
 
 -- | Variant of 'require' which drops the current value
 --
@@ -308,11 +304,11 @@ cached name (Compiler d j) = Compiler d $ const $ CompilerM $ do
     report logger $ "Checking cache: " ++ if modified then "modified" else "OK"
     if modified
         then do v <- unCompilerM $ j $ fromIdentifier identifier
-                liftIO $ storeSet store name identifier v
+                liftIO $ Store.set store [name, show identifier] v
                 return v
-        else do v <- liftIO $ storeGet store name identifier
-                case v of Found v' -> return v'
-                          _        -> throwError error'
+        else do v <- liftIO $ Store.get store [name, show identifier]
+                case v of Just v' -> return v'
+                          _       -> throwError error'
   where
     error' = "Hakyll.Core.Compiler.cached: Cache corrupt!"
 

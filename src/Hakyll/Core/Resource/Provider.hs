@@ -28,8 +28,9 @@ import qualified Crypto.Hash.MD5 as MD5
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as LB
 
-import Hakyll.Core.Store
 import Hakyll.Core.Resource
+import Hakyll.Core.Store (Store)
+import qualified Hakyll.Core.Store as Store
 
 -- | A value responsible for retrieving and listing resources
 --
@@ -88,16 +89,16 @@ resourceModified provider store r = do
 digestModified :: ResourceProvider -> Store -> Resource -> IO Bool
 digestModified provider store r = do
     -- Get the latest seen digest from the store
-    lastDigest <- storeGet store itemName identifier
+    lastDigest <- Store.get store key
     -- Calculate the digest for the resource
     newDigest <- resourceDigest provider r
     -- Check digests
-    if Found newDigest == lastDigest
+    if Just newDigest == lastDigest
         -- All is fine, not modified
         then return False
         -- Resource modified; store new digest
-        else do storeSet store itemName identifier newDigest
-                return True
+        else do
+            Store.set store key newDigest
+            return True
   where
-    identifier = toIdentifier r
-    itemName = "Hakyll.Core.ResourceProvider.digestModified"
+    key = ["Hakyll.Core.ResourceProvider.digestModified", unResource r]
