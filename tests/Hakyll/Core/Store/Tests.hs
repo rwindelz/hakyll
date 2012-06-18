@@ -1,67 +1,50 @@
-{-# LANGUAGE OverloadedStrings #-}
+--------------------------------------------------------------------------------
 module Hakyll.Core.Store.Tests
     ( tests
     ) where
 
-import Control.Applicative ((<$>))
-import Control.Monad (replicateM)
 
-import Test.Framework
-import Test.Framework.Providers.QuickCheck2
-import Test.Framework.Providers.HUnit
-import Test.QuickCheck
-import Test.QuickCheck.Monadic
-import qualified Test.HUnit as H
+--------------------------------------------------------------------------------
+import           Test.Framework
+import           Test.Framework.Providers.QuickCheck2
+import           Test.QuickCheck
+import           Test.QuickCheck.Monadic
 
-import Hakyll.Core.Identifier
-import Hakyll.Core.Store
-import TestSuite.Util
 
+--------------------------------------------------------------------------------
+import qualified Hakyll.Core.Store                    as Store
+import           TestSuite.Util
+
+
+--------------------------------------------------------------------------------
 tests :: [Test]
 tests =
-    [ testProperty "simple storeGet . storeSet" simpleSetGet
-    , testProperty "persistent storeGet . storeSet" persistentSetGet
-    , testCase     "WrongType storeGet . storeSet" wrongType
+    [ testProperty "simple get . set" simpleSetGet
+    , testProperty "persistent get . set" persistentSetGet
     ]
 
+
+--------------------------------------------------------------------------------
 simpleSetGet :: Property
 simpleSetGet = monadicIO $ do
-    identifier <- parseIdentifier . unFileName <$> pick arbitrary
-    FileName name <- pick arbitrary
-    value <- pick arbitrary
     store <- run $ makeStoreTest
-    run $ storeSet store name identifier (value :: String)
-    value' <- run $ storeGet store name identifier
-    assert $ Found value == value'
+    key   <- pick arbitrary
+    value <- pick arbitrary
 
+    run $ Store.set store key (value :: String)
+    value' <- run $ Store.get store key
+    assert $ Just value == value'
+
+
+--------------------------------------------------------------------------------
 persistentSetGet :: Property
 persistentSetGet = monadicIO $ do
-    identifier <- parseIdentifier . unFileName <$> pick arbitrary
-    FileName name <- pick arbitrary
-    value <- pick arbitrary
     store1 <- run $ makeStoreTest
-    run $ storeSet store1 name identifier (value :: String)
+    key    <- pick arbitrary
+    value  <- pick arbitrary
+    run $ Store.set store1 key (value :: String)
+
     -- Now Create another store from the same dir to test persistence
     store2 <- run $ makeStoreTest
-    value' <- run $ storeGet store2 name identifier
-    assert $ Found value == value'
-
-wrongType :: H.Assertion
-wrongType = do
-    store <- makeStoreTest
-    -- Store a string and try to fetch an int
-    storeSet store "foo" "bar" ("qux" :: String)
-    value <- storeGet store "foo" "bar" :: IO (StoreGet Int)
-    H.assert $ case value of WrongType _ _ -> True
-                             _             -> False
-
-newtype FileName = FileName {unFileName :: String}
-                 deriving (Show)
-
-instance Arbitrary FileName where
-    arbitrary = do
-        length' <- choose (5, 100)
-        str <- replicateM length' $ elements cs
-        return $ FileName str
-      where
-        cs = ['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9'] ++ ".- "
+    value' <- run $ Store.get store2 key
+    assert $ Just value == value'

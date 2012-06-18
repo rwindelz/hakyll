@@ -10,21 +10,21 @@ module Hakyll.Core.Store
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative     ((<$>))
-import           Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
-import qualified Crypto.Hash.MD5         as MD5
-import           Data.Binary             (Binary, decodeFile, encodeFile)
-import qualified Data.ByteString         as B
-import           Data.List               (intercalate)
-import           Data.Map                (Map)
-import qualified Data.Map                as M
-import qualified Data.Text               as T
-import qualified Data.Text.Encoding      as T
-import           System.Directory        (doesFileExist)
-import           System.Directory        (createDirectoryIfMissing)
-import           System.FilePath         ((</>))
-import           Text.Printf             (printf)
-import           Unsafe.Coerce           (unsafeCoerce)
+import           Control.Applicative ((<$>))
+import qualified Crypto.Hash.MD5     as MD5
+import           Data.Binary         (Binary, decodeFile, encodeFile)
+import qualified Data.ByteString     as B
+import           Data.IORef          (IORef, modifyIORef, newIORef, readIORef)
+import           Data.List           (intercalate)
+import           Data.Map            (Map)
+import qualified Data.Map            as M
+import qualified Data.Text           as T
+import qualified Data.Text.Encoding  as T
+import           System.Directory    (doesFileExist)
+import           System.Directory    (createDirectoryIfMissing)
+import           System.FilePath     ((</>))
+import           Text.Printf         (printf)
+import           Unsafe.Coerce       (unsafeCoerce)
 
 
 --------------------------------------------------------------------------------
@@ -36,8 +36,8 @@ data Box = forall a. Box a
 data Store = Store
     { -- | All items are stored on the filesystem
       storeDirectory :: FilePath
-    , -- | And some items are also kept in-memory
-      storeMap       :: Maybe (MVar (Map String Box))
+    , -- | Optionally, items are also kept in-memory
+      storeMap       :: Maybe (IORef (Map String Box))
     }
 
 
@@ -48,7 +48,7 @@ new :: Bool      -- ^ Use in-memory caching
     -> IO Store  -- ^ Store
 new inMemory directory = do
     createDirectoryIfMissing True directory
-    mvar <- if inMemory then Just <$> newMVar M.empty else return Nothing
+    mvar <- if inMemory then Just <$> newIORef M.empty else return Nothing
     return Store
         { storeDirectory = directory
         , storeMap       = mvar
@@ -58,9 +58,9 @@ new inMemory directory = do
 --------------------------------------------------------------------------------
 -- | Auxiliary: add an item to the in-memory cache
 cacheInsert :: Store -> String -> a -> IO ()
-cacheInsert (Store _ Nothing)   _   _     = return ()
-cacheInsert (Store _ (Just mv)) key x =
-    modifyMVar_ mv $ return . M.insert key (Box x)
+cacheInsert (Store _ Nothing)    _   _     = return ()
+cacheInsert (Store _ (Just ref)) key x =
+    modifyIORef ref $ M.insert key (Box x)
 
 
 --------------------------------------------------------------------------------
@@ -68,7 +68,7 @@ cacheInsert (Store _ (Just mv)) key x =
 cacheLookup :: Store -> String -> IO (Maybe a)
 cacheLookup (Store _ Nothing)   _   = return Nothing
 cacheLookup (Store _ (Just mv)) key = do
-    map' <- readMVar mv
+    map' <- readIORef mv
     case M.lookup key map' of
         Nothing      -> return Nothing
         Just (Box x) -> return $ Just $ unsafeCoerce x
