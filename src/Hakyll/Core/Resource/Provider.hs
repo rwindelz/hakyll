@@ -11,20 +11,23 @@ module Hakyll.Core.Resource.Provider
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative   ((<$>))
-import qualified Crypto.Hash.MD5       as MD5
-import qualified Data.ByteString       as B
-import qualified Data.ByteString.Lazy  as BL
+import           Control.Applicative           ((<$>))
+import           Control.Monad                 (liftM2)
+import qualified Crypto.Hash.MD5               as MD5
+import qualified Data.ByteString               as B
+import qualified Data.ByteString.Lazy          as BL
 import           Data.IORef
-import           Data.Map              (Map)
-import qualified Data.Map              as M
-import           Data.Set              (Set)
-import qualified Data.Set              as S
+import           Data.Map                      (Map)
+import qualified Data.Map                      as M
+import           Data.Set                      (Set)
+import qualified Data.Set                      as S
 
 
 --------------------------------------------------------------------------------
-import           Hakyll.Core.Store     (Store)
-import qualified Hakyll.Core.Store     as Store
+import           Hakyll.Core.Resource
+import           Hakyll.Core.Resource.Metadata
+import           Hakyll.Core.Store             (Store)
+import qualified Hakyll.Core.Store             as Store
 import           Hakyll.Core.Util.File
 
 
@@ -50,9 +53,21 @@ new ignore directory = do
 
 
 --------------------------------------------------------------------------------
+-- | A resource is modified if it or its metadata has changed
+resourceModified :: ResourceProvider -> Store -> Resource -> IO Bool
+resourceModified provider store rs
+    | fileExists provider mfp = liftM2 (||) (m mfp) (m fp)
+    | otherwise               = m fp
+  where
+    m   = fileModified provider store
+    fp  = unResource rs
+    mfp = metadataFilePath fp
+
+
+--------------------------------------------------------------------------------
 -- | Check if a given identifier has a resource
 fileExists :: ResourceProvider -> FilePath -> Bool
-fileExists provider = flip S.member $ files provider
+fileExists = flip S.member . files
 
 
 --------------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------
 module Hakyll.Core.Resource.Metadata
     ( Metadata
+    , metadataFilePath
     ) where
 
 
@@ -17,7 +18,6 @@ import           Text.Parsec.String      (Parser)
 
 
 --------------------------------------------------------------------------------
-import           Hakyll.Core.Resource
 import           Hakyll.Core.Util.String
 
 
@@ -26,13 +26,13 @@ type Metadata = Map String String
 
 
 --------------------------------------------------------------------------------
-loadMetadata :: Resource -> IO Metadata
+loadMetadata :: FilePath -> IO Metadata
 loadMetadata = undefined
 
 
 --------------------------------------------------------------------------------
-metadataFilePath :: Resource -> FilePath
-metadataFilePath = flip addExtension "metadata" . unResource
+metadataFilePath :: FilePath -> FilePath
+metadataFilePath = flip addExtension "metadata"
 
 
 --------------------------------------------------------------------------------
@@ -56,9 +56,9 @@ loadMetadataFile fp = do
 --------------------------------------------------------------------------------
 -- | Check if a file "probably" has a metadata header. The main goal of this is
 -- to exclude binary files (which are unlikely to start with "---").
-probablyHasMetadataHeader :: Resource -> IO Bool
-probablyHasMetadataHeader rs = do
-    handle <- IO.openFile (unResource rs) IO.ReadMode
+probablyHasMetadataHeader :: FilePath -> IO Bool
+probablyHasMetadataHeader fp = do
+    handle <- IO.openFile fp IO.ReadMode
     bs     <- BC.hGet handle 1024
     IO.hClose handle
     return $ isMetadataHeader bs
