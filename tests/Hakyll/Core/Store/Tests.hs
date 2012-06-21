@@ -6,7 +6,9 @@ module Hakyll.Core.Store.Tests
 
 --------------------------------------------------------------------------------
 import           Test.Framework
-import           Test.Framework.Providers.QuickCheck2
+import           Test.Framework.Providers.HUnit       (testCase)
+import           Test.Framework.Providers.QuickCheck2 (testProperty)
+import           Test.HUnit                           (Assertion, assertEqual)
 import           Test.QuickCheck
 import           Test.QuickCheck.Monadic
 
@@ -19,8 +21,9 @@ import           TestSuite.Util
 --------------------------------------------------------------------------------
 tests :: [Test]
 tests =
-    [ testProperty "simple get . set" simpleSetGet
+    [ testProperty "simple get . set"     simpleSetGet
     , testProperty "persistent get . set" persistentSetGet
+    , testCase     "set/delete/get"       setDeleteGet
     ]
 
 
@@ -48,3 +51,14 @@ persistentSetGet = monadicIO $ do
     store2 <- run $ makeStoreTest
     value' <- run $ Store.get store2 key
     assert $ Just value == value'
+
+
+--------------------------------------------------------------------------------
+setDeleteGet :: Assertion
+setDeleteGet = do
+    store <- makeStoreTest
+    Store.set    store ["foo", "bar"] "qux"
+    Store.delete store ["foo", "bar"]
+
+    noqux <- Store.get store ["foo", "bar"] :: IO (Maybe String)
+    assertEqual "setDeleteGet" Nothing noqux
