@@ -35,9 +35,9 @@ import           Hakyll.Core.Util.File
 -- | Responsible for retrieving and listing resources
 data ResourceProvider = ResourceProvider
     { -- | A list of all files found
-      files             :: Set FilePath
+      files                 :: Set FilePath
     , -- | Cache keeping track of modified files
-      fileModifiedCache :: IORef (Map FilePath Bool)
+      resourceModifiedCache :: IORef (Map Resource Bool)
     }
 
 
@@ -55,11 +55,22 @@ new ignore directory = do
 --------------------------------------------------------------------------------
 -- | A resource is modified if it or its metadata has changed
 resourceModified :: ResourceProvider -> Store -> Resource -> IO Bool
-resourceModified provider store rs
-    | fileExists provider mfp = liftM2 (||) (m mfp) (m fp)
-    | otherwise               = m fp
+resourceModified provider store rs = do
+    cache <- readIORef cacheRef
+    case M.lookup rs cache of
+        -- Already in the cache
+        Just m  -> return m
+        -- Not yet in the cache, check digests (if it exists)
+        Nothing -> do
+            m <- check
+            modifyIORef cacheRef (M.insert rs m)
+            -- TODO: Invalidate metadata cache
+            return m
   where
-    m   = fileModified provider store
+    cacheRef = resourceModifiedCache provider
+    check    = fmap or $ mapM (fileDigestModified store) $
+        if fileExists provider mfp then [mfp, fp] else [fp]
+
     fp  = unResource rs
     mfp = metadataFilePath fp
 
@@ -68,24 +79,6 @@ resourceModified provider store rs
 -- | Check if a given identifier has a resource
 fileExists :: ResourceProvider -> FilePath -> Bool
 fileExists = flip S.member . files
-
-
---------------------------------------------------------------------------------
--- | Check if a file was modified
-fileModified :: ResourceProvider -> Store -> FilePath -> IO Bool
-fileModified provider store fp = do
-    cache <- readIORef cacheRef
-    case M.lookup fp cache of
-        -- Already in the cache
-        Just m  -> return m
-        -- Not yet in the cache, check digests (if it exists)
-        Nothing -> do
-            -- TODO: Do we need to check if the file exists?
-            m <- fileDigestModified store fp
-            modifyIORef cacheRef (M.insert fp m)
-            return m
-  where
-    cacheRef = fileModifiedCache provider
 
 
 --------------------------------------------------------------------------------
