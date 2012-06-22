@@ -8,12 +8,13 @@ module Hakyll.Core.Resource.Provider
     ( ResourceProvider
     , new
     , fileExists
+    , resourceModified
+    , resourceList
     ) where
 
 
 --------------------------------------------------------------------------------
 import           Control.Applicative           ((<$>))
-import           Control.Monad                 (liftM2)
 import qualified Crypto.Hash.MD5               as MD5
 import qualified Data.ByteString               as B
 import qualified Data.ByteString.Lazy          as BL
@@ -36,7 +37,7 @@ import           Hakyll.Core.Util.File
 -- | Responsible for retrieving and listing resources
 data ResourceProvider = ResourceProvider
     { -- | A list of all files found
-      files                 :: Set FilePath
+      resourceSet           :: Set Resource
     , -- | Cache keeping track of modified files
       resourceModifiedCache :: IORef (Map Resource Bool)
     }
@@ -48,7 +49,8 @@ new :: (FilePath -> Bool)   -- ^ Should we ignore this file?
     -> FilePath             -- ^ Search directory
     -> IO ResourceProvider  -- ^ Resulting provider
 new ignore directory = do
-    list  <- filter (not . ignore) <$> getRecursiveContents False directory
+    list  <- map resource . filter (not . ignore) <$>
+        getRecursiveContents False directory
     cache <- newIORef M.empty
     return $ ResourceProvider (S.fromList list) cache
 
@@ -79,7 +81,7 @@ resourceModified provider store rs = do
 --------------------------------------------------------------------------------
 -- | Check if a given identifier has a resource
 fileExists :: ResourceProvider -> FilePath -> Bool
-fileExists = flip S.member . files
+fileExists provider = (`S.member` resourceSet provider) . resource
 
 
 --------------------------------------------------------------------------------
@@ -105,3 +107,8 @@ fileDigestModified store fp = do
 -- | Retrieve a digest for a given file
 fileDigest :: FilePath -> IO B.ByteString
 fileDigest = fmap MD5.hashlazy . BL.readFile
+
+
+--------------------------------------------------------------------------------
+resourceList :: ResourceProvider -> [Resource]
+resourceList = S.toList . resourceSet

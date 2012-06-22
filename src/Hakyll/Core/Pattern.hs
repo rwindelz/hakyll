@@ -35,7 +35,7 @@
 -- Like an 'Identifier', a 'Pattern' also has a type parameter. This is simply
 -- an extra layer of safety, and can be discarded using the 'castPattern'
 -- function.
-module Hakyll.Core.Identifier.Pattern
+module Hakyll.Core.Pattern
     ( Pattern
     , parsePattern
     , capture
