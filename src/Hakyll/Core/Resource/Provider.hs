@@ -7,6 +7,7 @@
 module Hakyll.Core.Resource.Provider
     ( ResourceProvider
     , new
+    , fileExists
     ) where
 
 

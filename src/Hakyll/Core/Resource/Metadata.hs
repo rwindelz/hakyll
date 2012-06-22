@@ -2,11 +2,13 @@
 module Hakyll.Core.Resource.Metadata
     ( Metadata
     , metadataFilePath
+    , loadMetadata
     ) where
 
 
 --------------------------------------------------------------------------------
 import           Control.Applicative     ((<$>), (<*), (<*>))
+import           Control.Arrow           (second)
 import qualified Data.ByteString.Char8   as BC
 import           Data.Map                (Map)
 import qualified Data.Map                as M
@@ -26,13 +28,21 @@ type Metadata = Map String String
 
 
 --------------------------------------------------------------------------------
-loadMetadata :: FilePath -> IO Metadata
-loadMetadata = undefined
+metadataFilePath :: FilePath -> FilePath
+metadataFilePath = flip addExtension "metadata"
 
 
 --------------------------------------------------------------------------------
-metadataFilePath :: FilePath -> FilePath
-metadataFilePath = flip addExtension "metadata"
+loadMetadata :: FilePath -> Maybe FilePath -> IO (Metadata, Maybe String)
+loadMetadata fp mfp = do
+    hasHeader  <- probablyHasMetadataHeader fp
+    (md, body) <- if hasHeader
+        then second Just <$> loadMetadataHeader fp
+        else return (M.empty, Nothing)
+
+    emd <- maybe (return M.empty) loadMetadataFile mfp
+
+    return (M.union md emd, body)
 
 
 --------------------------------------------------------------------------------
@@ -65,7 +75,7 @@ probablyHasMetadataHeader fp = do
   where
     isMetadataHeader bs =
         let pre = BC.takeWhile (\x -> x /= '\n' && x /= '\r') bs
-        in  BC.length pre > 3 && BC.all (== '-') pre
+        in  BC.length pre >= 3 && BC.all (== '-') pre
 
 
 --------------------------------------------------------------------------------
