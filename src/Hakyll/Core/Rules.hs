@@ -1,19 +1,9 @@
+--------------------------------------------------------------------------------
 -- | This module provides a declarative DSL in which the user can specify the
 -- different rules used to run the compilers.
 --
 -- The convention is to just list all items in the 'RulesM' monad, routes and
 -- compilation rules.
---
--- A typical usage example would be:
---
--- > main = hakyll $ do
--- >     match "posts/*" $ do
--- >         route   (setExtension "html")
--- >         compile someCompiler
--- >     match "css/*" $ do
--- >         route   idRoute
--- >         compile compressCssCompiler
---
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Hakyll.Core.Rules
     ( RulesM
