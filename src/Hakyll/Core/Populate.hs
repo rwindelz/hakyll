@@ -6,6 +6,7 @@ module Hakyll.Core.Populate
     , runPopulate
 
     , match
+    , yield
     ) where
 
 
@@ -51,3 +52,11 @@ match pattern f = PopulateM $ do
                 let item     = Item (Just rs)
                     userdata = f cs item
                 tell [(show userdata, userdata)]
+
+
+--------------------------------------------------------------------------------
+yield :: Show i => (Item a -> i) -> Populate i
+yield f = PopulateM $ do
+    let item     = Item Nothing
+        userdata = f item
+    tell [(show userdata, userdata)]
