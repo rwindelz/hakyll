@@ -14,8 +14,9 @@ module Hakyll.Core.Populate
 import           Control.Applicative           (Applicative)
 import           Control.Monad                 (forM_)
 import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
-import           Control.Monad.Trans           (MonadIO, liftIO)
+import           Control.Monad.Trans           (MonadIO)
 import           Control.Monad.Writer          (WriterT, execWriterT, tell)
+import qualified Data.Map                      as M
 
 
 --------------------------------------------------------------------------------
@@ -38,6 +39,7 @@ type Populate i = PopulateM i ()
 --------------------------------------------------------------------------------
 runPopulate :: Populate i -> ResourceProvider -> IO [(String, i)]
 runPopulate populate provider =
+    fmap (M.toList . M.fromList) $  -- Ensure uniqueness
     execWriterT $ runReaderT (unPopulateM populate) provider
 
 
@@ -49,14 +51,16 @@ match pattern f = PopulateM $ do
         case capture pattern (unResource rs) of
             Nothing -> return ()
             Just cs -> do
-                let item     = Item (Just rs)
+                let item     = makeItem itemid (Just rs)
                     userdata = f cs item
-                tell [(show userdata, userdata)]
+                    itemid   = show userdata
+                tell [(itemid, userdata)]
 
 
 --------------------------------------------------------------------------------
 yield :: Show i => (Item a -> i) -> Populate i
 yield f = PopulateM $ do
-    let item     = Item Nothing
+    let item     = makeItem itemid Nothing
         userdata = f item
-    tell [(show userdata, userdata)]
+        itemid   = show userdata
+    tell [(itemid, userdata)]
