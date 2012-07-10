@@ -1,10 +1,13 @@
 --------------------------------------------------------------------------------
-module Hakyll.Core.DependencyAnalyzer where
+module Hakyll.Core.DependencyAnalyzer
+    ( findCycle
+    , analyze
+    ) where
 
 
 --------------------------------------------------------------------------------
 import           Control.Applicative       ((<$>))
-import           Control.Monad             (filterM, forM_, when)
+import           Control.Monad             (filterM, forM_, msum, when)
 import           Control.Monad.Reader      (ask)
 import           Control.Monad.RWS         (RWS, runRWS)
 import           Control.Monad.State       (evalState, get, modify)
@@ -12,8 +15,6 @@ import           Control.Monad.Writer      (tell)
 import qualified Data.Map                  as M
 import           Data.Set                  (Set)
 import qualified Data.Set                  as S
-import           Prelude                   hiding (reverse)
-import qualified Prelude                   as P (reverse)
 
 
 --------------------------------------------------------------------------------
@@ -21,6 +22,26 @@ import           Hakyll.Core.DirectedGraph
 
 
 --------------------------------------------------------------------------------
+-- | Simple algorithm do find a cycle in a graph, if any exists
+findCycle :: Ord a
+          => DirectedGraph a
+          -> Maybe [a]
+findCycle dg = fmap reverse $ msum
+    [ findCycle' [x] x n
+    | x <- S.toList $ nodes dg
+    , n <- neighbours x dg
+    ]
+  where
+    findCycle' stack start x
+        | x == start = Just (x : stack)
+        | otherwise  = msum
+            [ findCycle' (x : stack) start n
+            | n <- neighbours x dg
+            ]
+
+
+--------------------------------------------------------------------------------
+-- | Do not call this on graphs with cycles
 analyze :: Ord a
         => DirectedGraph a  -- ^ Old graph
         -> DirectedGraph a  -- ^ New graph
@@ -67,7 +88,7 @@ walk :: Ord a
 walk x = do
     -- Determine dirty neighbours and walk them
     dg <- ask
-    forM_ (S.toList $ neighbours x dg) $ \n -> do
+    forM_ (neighbours x dg) $ \n -> do
         d <- isDirty n
         when d $ walk n
 
@@ -91,7 +112,7 @@ dirty ood dg = S.fromList $ flip evalState M.empty $
         case M.lookup x m of
             Just d  -> return d
             Nothing -> do
-                nd <- mapM go $ S.toList $ neighbours x dg
+                nd <- mapM go $ neighbours x dg
                 let d = ood x || or nd
                 modify $ M.insert x d
                 return d

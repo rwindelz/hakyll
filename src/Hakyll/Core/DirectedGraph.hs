@@ -16,6 +16,7 @@ module Hakyll.Core.DirectedGraph
 
 
 --------------------------------------------------------------------------------
+import           Control.Arrow (second)
 import           Data.Binary   (Binary)
 import           Data.Map      (Map)
 import qualified Data.Map      as M
@@ -29,7 +30,7 @@ import           Prelude       hiding (reverse)
 
 --------------------------------------------------------------------------------
 -- | Type used to represent a directed graph
-newtype DirectedGraph a = DirectedGraph {unDirectedGraph :: Map a (Set a)}
+newtype DirectedGraph a = DirectedGraph {unDirectedGraph :: Map a [a]}
     deriving (Show, Binary, Typeable)
 
 
@@ -38,21 +39,21 @@ newtype DirectedGraph a = DirectedGraph {unDirectedGraph :: Map a (Set a)}
 instance Ord a => Monoid (DirectedGraph a) where
     mempty                                        = DirectedGraph M.empty
     mappend (DirectedGraph m1) (DirectedGraph m2) = DirectedGraph $
-        M.unionWith S.union m1 m2
+        M.unionWith (\x y -> sortUnique (x ++ y)) m1 m2
 
 
 --------------------------------------------------------------------------------
 -- | Construction of directed graphs
 fromList :: Ord a
-         => [(a, Set a)]     -- ^ List of (node, reachable neighbours)
+         => [(a, [a])]       -- ^ List of (node, reachable neighbours)
          -> DirectedGraph a  -- ^ Resulting directed graph
-fromList = DirectedGraph . M.fromList
+fromList = DirectedGraph . M.fromList . map (second sortUnique)
 
 
 --------------------------------------------------------------------------------
 -- | Deconstruction of directed graphs
 toList :: DirectedGraph a
-       -> [(a, Set a)]
+       -> [(a, [a])]
 toList = M.toList . unDirectedGraph
 
 
@@ -78,5 +79,11 @@ nodes = M.keysSet . unDirectedGraph
 neighbours :: Ord a
            => a                -- ^ Node to get the neighbours of
            -> DirectedGraph a  -- ^ Graph to search in
-           -> Set a            -- ^ Set containing the neighbours
-neighbours x dg = fromMaybe S.empty $ M.lookup x $ unDirectedGraph dg
+           -> [a]              -- ^ Set containing the neighbours
+neighbours x dg = fromMaybe [] $ M.lookup x $ unDirectedGraph dg
+
+
+--------------------------------------------------------------------------------
+-- | Sort and make unique
+sortUnique :: Ord a => [a] -> [a]
+sortUnique = S.toAscList . S.fromList
