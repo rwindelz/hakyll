@@ -8,26 +8,26 @@ module Hakyll.Core.Compile
 
 
 --------------------------------------------------------------------------------
-import           Data.Typeable        (Typeable)
+import           Data.Typeable                 (Typeable)
 
 
 --------------------------------------------------------------------------------
-import           Hakyll.Core.Compiler
+import           Hakyll.Core.Compiler.Internal
 import           Hakyll.Core.Item
 import           Hakyll.Core.Resource
 
 
 --------------------------------------------------------------------------------
-data Compile where
-    Compile :: Typeable a => Item a -> Compiler Resource a -> Compile
-    Create  :: Typeable a => Item a -> Compiler () a       -> Compile
+data Compile i where
+    Compile :: Typeable a => Item a -> Compiler i Resource a -> Compile i
+    Create  :: Typeable a => Item a -> Compiler i () a       -> Compile i
 
 
 --------------------------------------------------------------------------------
-compile :: Typeable a => Item a -> Compiler Resource a -> Compile
+compile :: Typeable a => Item a -> Compiler i Resource a -> Compile i
 compile = Compile
 
 
 --------------------------------------------------------------------------------
-create :: Typeable a => Item a -> Compiler () a -> Compile
+create :: Typeable a => Item a -> Compiler i () a -> Compile i
 create = Create

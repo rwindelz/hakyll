@@ -1,3 +1,4 @@
+--------------------------------------------------------------------------------
 -- | A Compiler manages targets and dependencies between targets
 --
 -- The most distinguishing property of a 'Compiler' is that it is an Arrow. A
@@ -60,7 +61,7 @@
 -- Let's look at it in detail:
 --
 -- > (Binary a, Typeable a, Writable a)
--- 
+--
 -- These are constraints for the @a@ type. @a@ (the template) needs to have
 -- certain properties for it to be required.
 --
@@ -87,9 +88,10 @@
 -- Note that require will fetch a previously compiled item: in our example of
 -- the type @a@. It is /very/ important that the compiler which produced this
 -- value, produced the right type as well!
---
-{-# LANGUAGE GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
-module Hakyll.Core.Compiler
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+module Hakyll.Core.Compiler where
+    {-
     ( Compiler
     , runCompiler
     , getIdentifier
@@ -114,94 +116,92 @@ module Hakyll.Core.Compiler
     , byPattern
     , byExtension
     ) where
+    -}
 
-import Prelude hiding ((.), id)
-import Control.Arrow ((>>>), (&&&), arr, first)
-import Control.Applicative ((<$>))
-import Control.Exception (SomeException, handle)
-import Control.Monad.Reader (ask)
-import Control.Monad.Trans (liftIO)
-import Control.Monad.Error (throwError)
-import Control.Category (Category, (.), id)
-import Data.List (find)
-import System.FilePath (takeExtension)
 
-import Data.Binary (Binary)
-import Data.Typeable (Typeable)
-import Data.ByteString.Lazy (ByteString)
+--------------------------------------------------------------------------------
+import           Control.Applicative                 ((<$>))
+import           Control.Arrow                       (arr, first, (&&&), (>>>))
+import           Control.Category                    (Category, id, (.))
+import           Control.Exception                   (SomeException, handle)
+import           Control.Monad.Error                 (throwError)
+import           Control.Monad.Reader                (ask)
+import           Control.Monad.Trans                 (liftIO)
+import           Data.Binary                         (Binary)
+import           Data.ByteString.Lazy                (ByteString)
+import           Data.List                           (find)
+import           Data.Typeable                       (Typeable)
+import           Prelude                             hiding (id, (.))
+import           System.FilePath                     (takeExtension)
 
-import Hakyll.Core.CompiledItem
-import Hakyll.Core.Compiler.Internal
-import Hakyll.Core.Identifier
-import Hakyll.Core.Identifier.Pattern
-import Hakyll.Core.Logger
-import Hakyll.Core.Resource
-import Hakyll.Core.Resource.Provider
-import Hakyll.Core.Routes
-import Hakyll.Core.Rules.Internal
-import Hakyll.Core.Store (Store)
-import Hakyll.Core.Writable
-import qualified Hakyll.Core.Store as Store
 
--- | Run a compiler, yielding the resulting target and it's dependencies. This
--- version of 'runCompilerJob' also stores the result
---
-runCompiler :: Compiler () CompileRule    -- ^ Compiler to run
-            -> Identifier ()              -- ^ Target identifier
-            -> ResourceProvider           -- ^ Resource provider
-            -> [Identifier ()]            -- ^ Universe
-            -> Routes                     -- ^ Route
-            -> Store                      -- ^ Store
-            -> Bool                       -- ^ Was the resource modified?
-            -> Logger                     -- ^ Logger
-            -> IO (Throwing CompileRule)  -- ^ Resulting item
-runCompiler compiler id' provider universe routes store modified logger = do
+--------------------------------------------------------------------------------
+import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Logger
+import           Hakyll.Core.Resource
+import           Hakyll.Core.Resource.Metadata.Cache
+import           Hakyll.Core.Resource.Provider
+import           Hakyll.Core.Store                   (Store)
+import qualified Hakyll.Core.Store                   as Store
+import           Hakyll.Core.Writable
+
+
+--------------------------------------------------------------------------------
+-- | Run a compiler, yielding the resulting target. This version of
+-- 'runCompilerJob' also stores the result and catches possible exceptions.
+runCompiler :: Binary a
+            => Compiler i () a
+            -> String
+            -> ResourceProvider
+            -> (String -> Maybe FilePath)
+            -> Store
+            -> Bool
+            -> Logger
+            -> IO (Either String a)
+runCompiler compiler id' provider routes store modified logger = do
     -- Run the compiler job
     result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
-        runCompilerJob compiler id' provider universe routes store modified
-            logger
+        runCompilerJob compiler id' provider routes store modified logger
 
-    -- Inspect the result
+    -- Store a copy in the cache first, before we return control. This makes
+    -- sure the compiled item can later be accessed by e.g. require.
     case result of
-        -- In case we compiled an item, we will store a copy in the cache first,
-        -- before we return control. This makes sure the compiled item can later
-        -- be accessed by e.g. require.
-        Right (CompileRule (CompiledItem x)) ->
-            Store.set store ["Hakyll.Core.Compiler.runCompiler", show id'] x
-
-        -- Otherwise, we do nothing here
-        _ -> return ()
+        Left  _ -> return ()
+        Right x ->
+            Store.set store ["Hakyll.Core.Compiler.runCompiler", id'] x
 
     return result
 
+
+--------------------------------------------------------------------------------
 -- | Get the identifier of the item that is currently being compiled
---
+{-
 getIdentifier :: Compiler a (Identifier b)
 getIdentifier = fromJob $ const $ CompilerM $
     castIdentifier . compilerIdentifier <$> ask
+-}
 
--- | Get the resource that is currently being compiled
---
-getResource :: Compiler a Resource
-getResource = getIdentifier >>> arr fromIdentifier
 
--- | Get the route we are using for this item
---
-getRoute :: Compiler a (Maybe FilePath)
-getRoute = getIdentifier >>> getRouteFor
-
+--------------------------------------------------------------------------------
 -- | Get the route for a specified item
---
-getRouteFor :: Compiler (Identifier a) (Maybe FilePath)
+{-
+getRouteFor :: Show i => Compiler i i (Maybe FilePath)
 getRouteFor = fromJob $ \identifier -> CompilerM $ do
     routes <- compilerRoutes <$> ask
     return $ runRoutes routes identifier
+-}
 
--- | Get the resource we are compiling as a string
---
-getResourceString :: Compiler Resource String
-getResourceString = getResourceWith resourceString
 
+--------------------------------------------------------------------------------
+-- | Get the resource body we are compiling as a string
+getResourceBody :: Compiler i Resource String
+getResourceBody = fromJob $ \rs -> CompilerM $ do
+    provider <- compilerResourceProvider <$> ask
+    store    <- compilerStore            <$> ask
+    liftIO $ resourceBody provider store rs
+
+
+{-
 -- | Get the resource we are compiling as a lazy bytestring
 --
 getResourceLBS :: Compiler Resource ByteString
@@ -388,3 +388,4 @@ byExtension :: Compiler a b              -- ^ Default compiler
 byExtension defaultCompiler = byPattern defaultCompiler . map (first extPattern)
   where
     extPattern c = predicate $ (== c) . takeExtension . toFilePath
+-}
