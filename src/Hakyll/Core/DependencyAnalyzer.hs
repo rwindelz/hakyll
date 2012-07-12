@@ -22,7 +22,8 @@ import           Hakyll.Core.DirectedGraph
 
 
 --------------------------------------------------------------------------------
--- | Simple algorithm do find a cycle in a graph, if any exists
+-- | Simple algorithm do find a cycle in a graph, if any exists. This one can
+-- still be optimised by a lot.
 findCycle :: Ord a
           => DirectedGraph a
           -> Maybe [a]

@@ -1,10 +1,12 @@
+--------------------------------------------------------------------------------
 -- | This is the module which binds it all together
---
 {-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
 module Hakyll.Core.Run
     ( run
     ) where
 
+
+--------------------------------------------------------------------------------
 import Control.Applicative (Applicative, (<$>))
 import Control.Monad (filterM, forM_)
 import Control.Monad.Error (ErrorT, runErrorT, throwError)
@@ -18,6 +20,8 @@ import System.FilePath ((</>))
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+
+--------------------------------------------------------------------------------
 import Hakyll.Core.Compiler
 import Hakyll.Core.Compiler.Internal
 import Hakyll.Core.Configuration
@@ -25,27 +29,31 @@ import Hakyll.Core.DependencyAnalyzer
 import Hakyll.Core.DirectedGraph
 import Hakyll.Core.Identifier
 import Hakyll.Core.Logger
+import Hakyll.Core.Compile
 import Hakyll.Core.Resource
 import Hakyll.Core.Resource.Provider
-import Hakyll.Core.Resource.Provider.File
-import Hakyll.Core.Routes
-import Hakyll.Core.Rules.Internal
 import Hakyll.Core.Store (Store)
+import Hakyll.Core.Populate
 import Hakyll.Core.Util.File
 import Hakyll.Core.Writable
 import qualified Hakyll.Core.Store as Store
+import qualified Hakyll.Core.Resource.Provider as Provider
 
+
+--------------------------------------------------------------------------------
 -- | Run all rules needed, return the rule set used
---
-run :: HakyllConfiguration -> RulesM a -> IO RuleSet
-run configuration rules = do
+run :: HakyllConfiguration
+    -> Populate i
+    -> (i -> Compile i)
+    -> IO ()
+run configuration populate compile' = do
     logger <- makeLogger putStrLn
 
     section logger "Initialising"
     store <- timed logger "Creating store" $
         Store.new (inMemoryCache configuration) $ storeDirectory configuration
-    provider <- timed logger "Creating provider" $
-        fileResourceProvider configuration
+    provider <- timed logger "Creating resource provider" $
+        Provider.new (ignoreFile configuration) "."
 
     -- Fetch the old graph from the store. If we don't find it, we consider this
     -- to be the first run
@@ -53,6 +61,25 @@ run configuration rules = do
     let (firstRun, oldGraph) = case graph of Just g -> (False, g)
                                              _      -> (True, mempty)
 
+
+    let _ = oldGraph :: DirectedGraph String
+
+    -- Populate
+    population <- timed logger "Populating..." $ runPopulate populate provider
+
+    -- Determine separate lists, compilers
+    let userdatas = map (snd . snd) population
+        items     = map (fst . snd) population
+        compilers = flip map population $
+            \(id', (item, ud)) -> (id', (item, ud, compile' ud))
+
+    -- Build dependency graph
+    let depsGraph = fromList depsList
+        depsList  = flip map compilers $ \(id', (_, _, Compile compiler)) ->
+            (id', runCompilerDependencies compiler userdatas items)
+
+    return ()
+{-
     let ruleSet = runRules rules provider
         compilers = rulesCompilers ruleSet
 
@@ -214,3 +241,4 @@ build id' = Runtime $ do
 
         -- Some error happened, rethrow in Runtime monad
         Left err -> throwError err
+-}

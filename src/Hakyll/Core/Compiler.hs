@@ -137,6 +137,7 @@ import           System.FilePath                     (takeExtension)
 
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Item
 import           Hakyll.Core.Logger
 import           Hakyll.Core.Resource
 import           Hakyll.Core.Resource.Metadata.Cache
@@ -151,17 +152,17 @@ import           Hakyll.Core.Writable
 -- 'runCompilerJob' also stores the result and catches possible exceptions.
 runCompiler :: Binary a
             => Compiler i () a
-            -> String
+            -> SomeItem
             -> ResourceProvider
             -> (String -> Maybe FilePath)
             -> Store
             -> Bool
             -> Logger
             -> IO (Either String a)
-runCompiler compiler id' provider routes store modified logger = do
+runCompiler compiler item provider routes store modified logger = do
     -- Run the compiler job
     result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
-        runCompilerJob compiler id' provider routes store modified logger
+        runCompilerJob compiler item provider routes store modified logger
 
     -- Store a copy in the cache first, before we return control. This makes
     -- sure the compiled item can later be accessed by e.g. require.
@@ -171,6 +172,8 @@ runCompiler compiler id' provider routes store modified logger = do
             Store.set store ["Hakyll.Core.Compiler.runCompiler", id'] x
 
     return result
+  where
+    id' = someItemIdentifier item
 
 
 --------------------------------------------------------------------------------
@@ -190,6 +193,16 @@ getRouteFor = fromJob $ \identifier -> CompilerM $ do
     routes <- compilerRoutes <$> ask
     return $ runRoutes routes identifier
 -}
+
+
+--------------------------------------------------------------------------------
+-- | Get the underlying resource
+getResource :: Compiler i a Resource
+getResource = fromJob $ \_ -> CompilerM $ do
+    SomeItem item <- compilerItem <$> ask
+    case itemResource item of
+        Just rs -> return rs
+        Nothing -> throwError "OHHHH... I give up Core dumped"  -- TODO
 
 
 --------------------------------------------------------------------------------

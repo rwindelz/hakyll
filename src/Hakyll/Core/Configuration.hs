@@ -1,14 +1,18 @@
+--------------------------------------------------------------------------------
 -- | Exports a datastructure for the top-level hakyll configuration
---
 module Hakyll.Core.Configuration
     ( HakyllConfiguration (..)
     , shouldIgnoreFile
     , defaultHakyllConfiguration
     ) where
 
-import System.FilePath (takeFileName)
-import Data.List (isPrefixOf, isSuffixOf)
 
+--------------------------------------------------------------------------------
+import           Data.List       (isPrefixOf, isSuffixOf)
+import           System.FilePath (takeFileName)
+
+
+--------------------------------------------------------------------------------
 data HakyllConfiguration = HakyllConfiguration
     { -- | Directory in which the output written
       destinationDirectory :: FilePath
@@ -45,8 +49,9 @@ data HakyllConfiguration = HakyllConfiguration
       inMemoryCache :: Bool
     }
 
+
+--------------------------------------------------------------------------------
 -- | Default configuration for a hakyll application
---
 defaultHakyllConfiguration :: HakyllConfiguration
 defaultHakyllConfiguration = HakyllConfiguration
     { destinationDirectory = "_site"
@@ -64,8 +69,9 @@ defaultHakyllConfiguration = HakyllConfiguration
       where
         fileName = takeFileName path
 
+
+--------------------------------------------------------------------------------
 -- | Check if a file should be ignored
---
 shouldIgnoreFile :: HakyllConfiguration -> FilePath -> Bool
 shouldIgnoreFile conf path =
     destinationDirectory conf `isPrefixOf` path ||

@@ -3,8 +3,10 @@
 module Hakyll.Core.Item
     ( Item (..)
     , makeItem
+
     , SomeItem (..)
     , castItem
+    , someItemIdentifier
     ) where
 
 
@@ -46,3 +48,8 @@ instance Show SomeItem where
 --------------------------------------------------------------------------------
 castItem :: Typeable a => SomeItem -> Maybe (Item a)
 castItem (SomeItem x) = cast x
+
+
+--------------------------------------------------------------------------------
+someItemIdentifier :: SomeItem -> String
+someItemIdentifier (SomeItem item) = itemIdentifier item

@@ -4,7 +4,7 @@
 module Hakyll.Core.Compiler.Internal
     ( DependencyEnvironment (..)
     , Dependencies
-    
+
     , CompilerEnvironment (..)
     , CompilerM (..)
 
@@ -23,8 +23,6 @@ import           Control.Category              (Category, id, (.))
 import           Control.Monad.Error           (ErrorT, runErrorT)
 import           Control.Monad.Reader
 import           Data.Monoid                   (mappend, mempty)
-import           Data.Set                      (Set)
-import qualified Data.Set                      as S
 import           Prelude                       hiding (id, (.))
 
 
@@ -43,14 +41,14 @@ data DependencyEnvironment i = DependencyEnvironment
 
 
 --------------------------------------------------------------------------------
-type Dependencies i = DependencyEnvironment i -> Set String
+type Dependencies i = DependencyEnvironment i -> [String]
 
 
 --------------------------------------------------------------------------------
 -- | Environment in which a compiler runs
 data CompilerEnvironment = CompilerEnvironment
-    { -- | Target identifier
-      compilerIdentifier       :: String
+    { -- | Our own item
+      compilerItem             :: SomeItem
     , -- | Resource provider
       compilerResourceProvider :: ResourceProvider
     , -- | Compiler routes
@@ -88,7 +86,7 @@ instance Functor (Compiler i a) where
 instance Applicative (Compiler i a) where
     pure                                  = Compiler mempty . const . return
     ~(Compiler d1 f) <*> ~(Compiler d2 j) =
-        Compiler (liftM2 S.union d1 d2) $ \x -> f x <*> j x
+        Compiler (liftM2 (++) d1 d2) $ \x -> f x <*> j x
 
 
 --------------------------------------------------------------------------------
@@ -117,7 +115,7 @@ instance ArrowChoice (Compiler i) where
 runCompilerDependencies :: Compiler i () a
                         -> [i]
                         -> [SomeItem]
-                        -> Set String
+                        -> [String]
 runCompilerDependencies compiler userdata items =
     compilerDependencies compiler env
   where
@@ -130,21 +128,21 @@ runCompilerDependencies compiler userdata items =
 --------------------------------------------------------------------------------
 -- | Run a compiler, yielding the resulting target
 runCompilerJob :: Compiler i () a
-               -> String
+               -> SomeItem
                -> ResourceProvider
                -> (String -> Maybe FilePath)
                -> Store
                -> Bool
                -> Logger
                -> IO (Either String a)
-runCompilerJob compiler id' provider routes store modified logger =
+runCompilerJob compiler item provider routes store modified logger =
     runReaderT (runErrorT $ unCompilerM $ compilerJob compiler ()) env
   where
-    env = CompilerEnvironment id' provider routes store modified logger
+    env = CompilerEnvironment item provider routes store modified logger
 
 
 --------------------------------------------------------------------------------
-fromDependencies :: (DependencyEnvironment i -> Set String)
+fromDependencies :: (DependencyEnvironment i -> [String])
                  -> Compiler i b b
 fromDependencies = flip Compiler return
 
