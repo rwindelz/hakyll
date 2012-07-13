@@ -22,7 +22,6 @@ import           Hakyll.Core.Resource
 data Item a = Item
     { itemIdentifier :: String
     , itemResource   :: Maybe Resource
-    , itemRoute      :: Maybe FilePath
     } deriving (Typeable)
 
 
@@ -33,7 +32,7 @@ instance Show (Item a) where
 
 --------------------------------------------------------------------------------
 makeItem :: String -> Maybe Resource -> Item a
-makeItem i r = Item i r Nothing
+makeItem = Item
 
 
 --------------------------------------------------------------------------------
