@@ -1,14 +1,18 @@
 --------------------------------------------------------------------------------
 {-# LANGUAGE ExistentialQuantification #-}
 module Hakyll.Core.Compile
-    ( Compile (..)
+    ( Box (..)
+    , box
+
+    , Compile (..)
     , compile
     , create
     ) where
 
 
 --------------------------------------------------------------------------------
-import           Control.Arrow                 ((>>>))
+import           Control.Arrow                 (arr, (>>>))
+import           Data.Binary                   (Binary)
 import           Data.Typeable                 (Typeable)
 
 
@@ -20,14 +24,25 @@ import           Hakyll.Core.Resource
 
 
 --------------------------------------------------------------------------------
-data Compile i = forall a. Typeable a => Compile (Compiler i () a)
+data Box = forall a. (Binary a, Typeable a) => Box a
 
 
 --------------------------------------------------------------------------------
-create :: Typeable a => Item a -> Compiler i () a -> Compile i
-create _ = Compile
+box :: (Binary a, Typeable a) => Compiler i a Box
+box = arr Box
 
 
 --------------------------------------------------------------------------------
-compile :: Typeable a => Item a -> Compiler i Resource a -> Compile i
-compile _ compiler = Compile (getResource >>> compiler)
+newtype Compile i = Compile (Compiler i () Box)
+
+
+--------------------------------------------------------------------------------
+create :: (Binary a, Typeable a)
+       => Item a -> Compiler i () a -> Compile i
+create _ compiler = Compile (compiler >>> box)
+
+
+--------------------------------------------------------------------------------
+compile :: (Binary a, Typeable a)
+        => Item a -> Compiler i Resource a -> Compile i
+compile _ compiler = Compile (getResource >>> compiler >>> box)

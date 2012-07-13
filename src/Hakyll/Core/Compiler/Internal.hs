@@ -35,8 +35,8 @@ import           Hakyll.Core.Store
 
 --------------------------------------------------------------------------------
 data DependencyEnvironment i = DependencyEnvironment
-    { dependencyUserdata :: [i]
-    , dependencyItems    :: [SomeItem]
+    { dependencyItems     :: [SomeItem]
+    , dependencyUserdatas :: [i]
     } deriving (Show)
 
 
@@ -113,15 +113,15 @@ instance ArrowChoice (Compiler i) where
 --------------------------------------------------------------------------------
 -- | Calculate the dependencies of a compiler
 runCompilerDependencies :: Compiler i () a
-                        -> [i]
                         -> [SomeItem]
+                        -> [i]
                         -> [String]
-runCompilerDependencies compiler userdata items =
+runCompilerDependencies compiler items userdatas =
     compilerDependencies compiler env
   where
     env = DependencyEnvironment
-            { dependencyUserdata = userdata
-            , dependencyItems    = items
+            { dependencyItems     = items
+            , dependencyUserdatas = userdatas
             }
 
 

@@ -1,7 +1,11 @@
 --------------------------------------------------------------------------------
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hakyll.Core.Populate
-    ( PopulateM
+    ( Population
+    , populationItems
+    , populationUserdatas
+    
+    , PopulateM
     , Populate
     , runPopulate
 
@@ -29,6 +33,16 @@ import           Hakyll.Core.Resource.Provider
 
 --------------------------------------------------------------------------------
 type Population i = [(String, (SomeItem, i))]
+
+
+--------------------------------------------------------------------------------
+populationItems :: Population i -> [SomeItem]
+populationItems = map (fst . snd)
+
+
+--------------------------------------------------------------------------------
+populationUserdatas :: Population i -> [i]
+populationUserdatas = map (snd . snd)
 
 
 --------------------------------------------------------------------------------

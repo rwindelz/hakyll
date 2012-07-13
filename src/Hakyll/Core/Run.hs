@@ -1,43 +1,52 @@
 --------------------------------------------------------------------------------
 -- | This is the module which binds it all together
-{-# LANGUAGE GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 module Hakyll.Core.Run
     ( run
     ) where
 
 
 --------------------------------------------------------------------------------
-import Control.Applicative (Applicative, (<$>))
-import Control.Monad (filterM, forM_)
-import Control.Monad.Error (ErrorT, runErrorT, throwError)
-import Control.Monad.Reader (ReaderT, runReaderT, ask)
-import Control.Monad.State.Strict (StateT, runStateT, get, put)
-import Control.Monad.Trans (liftIO)
-import Data.Map (Map)
-import Data.Monoid (mempty, mappend)
-import Prelude hiding (reverse)
-import System.FilePath ((</>))
-import qualified Data.Map as M
-import qualified Data.Set as S
+import           Control.Applicative            (Applicative, (<$>))
+import           Control.Monad                  (filterM, forM_)
+import           Control.Monad.Error            (ErrorT, runErrorT, throwError)
+import           Control.Monad.Reader           (ReaderT, ask, runReaderT)
+import           Control.Monad.State            (StateT, evalStateT, get, put)
+import           Control.Monad.Trans            (liftIO)
+import           Data.Map                       (Map)
+import qualified Data.Map                       as M
+import           Data.Maybe                     (fromMaybe)
+import           Data.Monoid                    (mappend, mempty)
+import           Data.Set                       (Set)
+import qualified Data.Set                       as S
+import           Prelude                        hiding (reverse)
+import           System.FilePath                ((</>))
 
 
 --------------------------------------------------------------------------------
-import Hakyll.Core.Compiler
-import Hakyll.Core.Compiler.Internal
-import Hakyll.Core.Configuration
-import Hakyll.Core.DependencyAnalyzer
-import Hakyll.Core.DirectedGraph
-import Hakyll.Core.Identifier
-import Hakyll.Core.Logger
-import Hakyll.Core.Compile
-import Hakyll.Core.Resource
-import Hakyll.Core.Resource.Provider
-import Hakyll.Core.Store (Store)
-import Hakyll.Core.Populate
-import Hakyll.Core.Util.File
-import Hakyll.Core.Writable
-import qualified Hakyll.Core.Store as Store
-import qualified Hakyll.Core.Resource.Provider as Provider
+import           Hakyll.Core.Compile
+import           Hakyll.Core.Compiler
+import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Configuration
+import           Hakyll.Core.DependencyAnalyzer
+import           Hakyll.Core.DirectedGraph
+import           Hakyll.Core.Identifier
+import           Hakyll.Core.Item
+import           Hakyll.Core.Logger
+import           Hakyll.Core.Populate
+import           Hakyll.Core.Resource
+import           Hakyll.Core.Resource.Provider
+import qualified Hakyll.Core.Resource.Provider  as Provider
+import           Hakyll.Core.Route
+import           Hakyll.Core.Store              (Store)
+import qualified Hakyll.Core.Store              as Store
+import           Hakyll.Core.Util.File
+import           Hakyll.Core.Writable
+
+
+--------------------------------------------------------------------------------
+type Compilation i = Map String (SomeItem, i, Compile i)
 
 
 --------------------------------------------------------------------------------
@@ -45,8 +54,9 @@ import qualified Hakyll.Core.Resource.Provider as Provider
 run :: HakyllConfiguration
     -> Populate i
     -> (i -> Compile i)
+    -> (i -> Route)
     -> IO ()
-run configuration populate compile' = do
+run configuration populate compile' route' = do
     logger <- makeLogger putStrLn
 
     section logger "Initialising"
@@ -55,30 +65,73 @@ run configuration populate compile' = do
     provider <- timed logger "Creating resource provider" $
         Provider.new (ignoreFile configuration) "."
 
-    -- Fetch the old graph from the store. If we don't find it, we consider this
-    -- to be the first run
-    graph <- Store.get store ["Hakyll.Core.Run.run", "dependencies"]
-    let (firstRun, oldGraph) = case graph of Just g -> (False, g)
-                                             _      -> (True, mempty)
+    -- Populate
+    population <- timed logger "Populating..." $ runPopulate populate provider
+    let compilation = M.fromList $ flip map population $
+            \(id', (item, ud)) -> (id', (item, ud, compile' ud))
 
+    (todo, modified) <- order logger store provider population compilation
+    return ()
+
+
+--------------------------------------------------------------------------------
+order :: Logger -> Store -> ResourceProvider -> Population i -> Compilation i
+      -> IO ([String], Set String)
+order logger store provider population compilation = do
+    -- Fetch the old graph from the store
+    oldGraph <- fmap (fromMaybe mempty) $ liftIO $
+        Store.get store ["Hakyll.Core.Run.run", "dependencies"]
 
     let _ = oldGraph :: DirectedGraph String
 
-    -- Populate
-    population <- timed logger "Populating..." $ runPopulate populate provider
-
-    -- Determine separate lists, compilers
-    let userdatas = map (snd . snd) population
-        items     = map (fst . snd) population
-        compilers = flip map population $
-            \(id', (item, ud)) -> (id', (item, ud, compile' ud))
-
-    -- Build dependency graph
-    let depsGraph = fromList depsList
+    -- Build new dependency graph
+    let newGraph  = fromList depsList
+        compilers = M.toList compilation
+        items     = populationItems population
+        userdatas = populationUserdatas population
         depsList  = flip map compilers $ \(id', (_, _, Compile compiler)) ->
-            (id', runCompilerDependencies compiler userdatas items)
+            (id', runCompilerDependencies compiler items userdatas)
 
-    return ()
+    -- For each item that has a resource, check whether it has been modified
+    modified <- flip filterM items $ \(SomeItem i) -> case itemResource i of
+        Nothing -> return False
+        Just rs -> liftIO $ resourceModified provider store rs
+    let modifiedSet = S.fromList $ map someItemIdentifier modified
+
+    -- Detect cycles in the graph
+    case findCycle newGraph of
+        Just c  -> dumpCycle logger c >> fail "herp"  -- TODO
+        Nothing -> return $
+            (analyze oldGraph newGraph (`S.member` modifiedSet), modifiedSet)
+
+
+--------------------------------------------------------------------------------
+-- | Dump cycle error and quit
+dumpCycle :: Logger -> [String] -> IO ()
+dumpCycle logger cycle' = do
+    section logger "Dependency cycle detected! Conflict:"
+    forM_ (zip cycle' $ drop 1 cycle') $ \(x, y) ->
+        report logger $ show x ++ " -> " ++ show y
+
+
+--------------------------------------------------------------------------------
+build :: Logger
+      -> Store
+      -> ResourceProvider
+      -> Compilation i
+      -> Set String
+      -> Map String FilePath
+      -> String
+      -> IO (Map String FilePath)
+build logger store provider compilation modified routes id' = do
+    r <- runCompilerJob compiler someItem provider (`M.lookup` routes)
+        store (id' `S.member` modified) logger
+    return routes
+  where
+    (someItem, userdata, Compile compiler) = compilation M.! id'
+    item = case someItem of SomeItem i -> i
+
+
 {-
     let ruleSet = runRules rules provider
         compilers = rulesCompilers ruleSet
@@ -111,26 +164,6 @@ run configuration populate compile' = do
     -- Flush and return
     flushLogger logger
     return ruleSet
-
-data RuntimeEnvironment = RuntimeEnvironment
-    { hakyllLogger           :: Logger
-    , hakyllConfiguration    :: HakyllConfiguration
-    , hakyllRoutes           :: Routes
-    , hakyllResourceProvider :: ResourceProvider
-    , hakyllStore            :: Store
-    , hakyllFirstRun         :: Bool
-    }
-
-data RuntimeState = RuntimeState
-    { hakyllAnalyzer  :: DependencyAnalyzer (Identifier ())
-    , hakyllCompilers :: Map (Identifier ()) (Compiler () CompileRule)
-    }
-
-newtype Runtime a = Runtime
-    { unRuntime :: ReaderT RuntimeEnvironment
-        (StateT RuntimeState (ErrorT String IO)) a
-    } deriving (Functor, Applicative, Monad)
-
 -- | Add a number of compilers and continue using these compilers
 --
 addNewCompilers :: [(Identifier (), Compiler () CompileRule)]
