@@ -1,5 +1,6 @@
 --------------------------------------------------------------------------------
-{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE Rank2Types          #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Hakyll.Core.Route
     ( Route
     , runRoute
@@ -12,25 +13,32 @@ module Hakyll.Core.Route
 
 
 --------------------------------------------------------------------------------
+import           Data.Typeable              (Typeable, cast)
+
+
+--------------------------------------------------------------------------------
 import           Hakyll.Core.Item
 import           Hakyll.Core.Route.Writable
 
 
 --------------------------------------------------------------------------------
--- TODO: Make this a reader so we can get the compiled contents?
-newtype Route = Route {unRoute :: IO ()}
+data Route = Route (forall a. Typeable a => a -> IO (Maybe FilePath))
 
 
 --------------------------------------------------------------------------------
-runRoute :: Route -> IO ()
-runRoute = unRoute
+runRoute :: Typeable a => Route -> a -> IO (Maybe FilePath)
+runRoute (Route r) x = r x
 
 
 --------------------------------------------------------------------------------
-route :: Writable a => Item a -> FilePath -> Route
-route = undefined
+route :: forall a. (Writable a, Typeable a) => Item a -> FilePath -> Route
+route _ fp = Route $ \x -> case cast x :: Maybe a of
+    Nothing -> error "Herp"  -- TODO
+    Just x' -> do
+        write fp x'
+        return $ Just fp
 
 
 --------------------------------------------------------------------------------
 noRoute :: Route
-noRoute = Route $ return ()
+noRoute = Route $ \_ -> return Nothing
