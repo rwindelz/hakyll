@@ -88,6 +88,7 @@
 -- Note that require will fetch a previously compiled item: in our example of
 -- the type @a@. It is /very/ important that the compiler which produced this
 -- value, produced the right type as well!
+{-# LANGUAGE ExistentialQuantification  #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 module Hakyll.Core.Compiler where
@@ -148,17 +149,25 @@ import           Hakyll.Core.Writable
 
 
 --------------------------------------------------------------------------------
+data Box = forall a. (Binary a, Typeable a) => Box a
+
+
+--------------------------------------------------------------------------------
+box :: (Binary a, Typeable a) => Compiler i a Box
+box = arr Box
+
+
+--------------------------------------------------------------------------------
 -- | Run a compiler, yielding the resulting target. This version of
 -- 'runCompilerJob' also stores the result and catches possible exceptions.
-runCompiler :: Binary a
-            => Compiler i () a
+runCompiler :: Compiler i () Box
             -> SomeItem
             -> ResourceProvider
             -> (String -> Maybe FilePath)
             -> Store
             -> Bool
             -> Logger
-            -> IO (Either String a)
+            -> IO (Either String Box)
 runCompiler compiler item provider routes store modified logger = do
     -- Run the compiler job
     result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
@@ -167,8 +176,8 @@ runCompiler compiler item provider routes store modified logger = do
     -- Store a copy in the cache first, before we return control. This makes
     -- sure the compiled item can later be accessed by e.g. require.
     case result of
-        Left  _ -> return ()
-        Right x ->
+        Left  _       -> return ()
+        Right (Box x) ->
             Store.set store ["Hakyll.Core.Compiler.runCompiler", id'] x
 
     return result

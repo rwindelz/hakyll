@@ -9,7 +9,7 @@ module Hakyll.Core.Run
 
 --------------------------------------------------------------------------------
 import           Control.Applicative            (Applicative, (<$>))
-import           Control.Monad                  (filterM, forM_)
+import           Control.Monad                  (filterM, foldM_, forM_)
 import           Control.Monad.Error            (ErrorT, runErrorT, throwError)
 import           Control.Monad.Reader           (ReaderT, ask, runReaderT)
 import           Control.Monad.State            (StateT, evalStateT, get, put)
@@ -71,16 +71,21 @@ run configuration populate compile' route' = do
             \(id', (item, ud)) -> (id', (item, ud, compile' ud))
 
     (todo, modified) <- order logger store provider population compilation
-    return ()
+
+    foldM_
+        (build configuration logger store provider compilation route' modified)
+        M.empty todo
 
 
 --------------------------------------------------------------------------------
 order :: Logger -> Store -> ResourceProvider -> Population i -> Compilation i
-      -> IO ([String], Set String)
+      -> IO ([String], (String -> Bool))
 order logger store provider population compilation = do
     -- Fetch the old graph from the store
-    oldGraph <- fmap (fromMaybe mempty) $ liftIO $
-        Store.get store ["Hakyll.Core.Run.run", "dependencies"]
+    mgraph <- Store.get store ["Hakyll.Core.Run.run", "dependencies"]
+    let (oldGraph, firstRun) = case mgraph of
+            Nothing -> (mempty, True)
+            Just g  -> (g, False)
 
     let _ = oldGraph :: DirectedGraph String
 
@@ -97,12 +102,13 @@ order logger store provider population compilation = do
         Nothing -> return False
         Just rs -> liftIO $ resourceModified provider store rs
     let modifiedSet = S.fromList $ map someItemIdentifier modified
+        isModified  = if firstRun then const True else (`S.member` modifiedSet)
 
     -- Detect cycles in the graph
     case findCycle newGraph of
         Just c  -> dumpCycle logger c >> fail "herp"  -- TODO
         Nothing -> return $
-            (analyze oldGraph newGraph (`S.member` modifiedSet), modifiedSet)
+            (analyze oldGraph newGraph isModified, isModified)
 
 
 --------------------------------------------------------------------------------
@@ -115,23 +121,31 @@ dumpCycle logger cycle' = do
 
 
 --------------------------------------------------------------------------------
-build :: Logger
+build :: HakyllConfiguration
+      -> Logger
       -> Store
       -> ResourceProvider
       -> Compilation i
-      -> Set String
+      -> (i -> Route)
+      -> (String -> Bool)
       -> Map String FilePath
       -> String
       -> IO (Map String FilePath)
-build logger store provider compilation modified routes id' = do
+build config logger store provider compilation route' modified routes id' = do
+    putStrLn $ "Building " ++ id'
+
+
     r <- runCompilerJob compiler someItem provider (`M.lookup` routes)
-        store (id' `S.member` modified) logger
-    return routes
+        store (modified id') logger
+
+    case r of
+        Left err      -> fail err   -- TODO
+        Right (Box x) -> do
+            mroute <- runRoute (route' userdata) dir x
+            return $ maybe routes (\r -> M.insert id' r routes) mroute
   where
     (someItem, userdata, Compile compiler) = compilation M.! id'
-    item = case someItem of SomeItem i -> i
-
-
+    dir = destinationDirectory config
 {-
     let ruleSet = runRules rules provider
         compilers = rulesCompilers ruleSet

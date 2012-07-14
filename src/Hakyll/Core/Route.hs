@@ -14,31 +14,36 @@ module Hakyll.Core.Route
 
 --------------------------------------------------------------------------------
 import           Data.Typeable              (Typeable, cast)
+import           System.FilePath            ((</>))
 
 
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Item
 import           Hakyll.Core.Route.Writable
+import           Hakyll.Core.Util.File
 
 
 --------------------------------------------------------------------------------
-data Route = Route (forall a. Typeable a => a -> IO (Maybe FilePath))
+data Route = Route
+    (forall a. Typeable a => FilePath -> a -> IO (Maybe FilePath))
 
 
 --------------------------------------------------------------------------------
-runRoute :: Typeable a => Route -> a -> IO (Maybe FilePath)
-runRoute (Route r) x = r x
+runRoute :: Typeable a => Route -> FilePath -> a -> IO (Maybe FilePath)
+runRoute (Route r) = r
 
 
 --------------------------------------------------------------------------------
 route :: forall a. (Writable a, Typeable a) => Item a -> FilePath -> Route
-route _ fp = Route $ \x -> case cast x :: Maybe a of
+route _ fp = Route $ \dir x -> case cast x :: Maybe a of
     Nothing -> error "Herp"  -- TODO
     Just x' -> do
-        write fp x'
+        let fp' = dir </> fp
+        makeDirectories fp'
+        write fp' x'
         return $ Just fp
 
 
 --------------------------------------------------------------------------------
 noRoute :: Route
-noRoute = Route $ \_ -> return Nothing
+noRoute = Route $ \_ _ -> return Nothing

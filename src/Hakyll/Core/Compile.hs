@@ -1,10 +1,6 @@
 --------------------------------------------------------------------------------
-{-# LANGUAGE ExistentialQuantification #-}
 module Hakyll.Core.Compile
-    ( Box (..)
-    , box
-
-    , Compile (..)
+    ( Compile (..)
     , compile
     , create
     ) where
@@ -21,15 +17,6 @@ import           Hakyll.Core.Compiler
 import           Hakyll.Core.Compiler.Internal
 import           Hakyll.Core.Item
 import           Hakyll.Core.Resource
-
-
---------------------------------------------------------------------------------
-data Box = forall a. (Binary a, Typeable a) => Box a
-
-
---------------------------------------------------------------------------------
-box :: (Binary a, Typeable a) => Compiler i a Box
-box = arr Box
 
 
 --------------------------------------------------------------------------------
