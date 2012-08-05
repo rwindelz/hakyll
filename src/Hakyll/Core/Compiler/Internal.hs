@@ -2,8 +2,7 @@
 -- | Internally used compiler module
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Hakyll.Core.Compiler.Internal
-    ( DependencyEnvironment (..)
-    , Dependencies
+    ( Dependencies
 
     , CompilerEnvironment (..)
     , CompilerM (..)
@@ -29,25 +28,21 @@ import           Prelude                       hiding (id, (.))
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Item
 import           Hakyll.Core.Logger
+import           Hakyll.Core.Populate
 import           Hakyll.Core.Resource.Provider
 import           Hakyll.Core.Store
 
 
 --------------------------------------------------------------------------------
-data DependencyEnvironment i = DependencyEnvironment
-    { dependencyItems     :: [SomeItem]
-    , dependencyUserdatas :: [i]
-    } deriving (Show)
-
-
---------------------------------------------------------------------------------
-type Dependencies i = DependencyEnvironment i -> [String]
+type Dependencies i = Population i -> [String]
 
 
 --------------------------------------------------------------------------------
 -- | Environment in which a compiler runs
-data CompilerEnvironment = CompilerEnvironment
-    { -- | Our own item
+data CompilerEnvironment i = CompilerEnvironment
+    { -- We also need the dependency environment here!
+      compilerPopulation       :: Population i
+    , -- | Our own item
       compilerItem             :: SomeItem
     , -- | Resource provider
       compilerResourceProvider :: ResourceProvider
@@ -64,8 +59,8 @@ data CompilerEnvironment = CompilerEnvironment
 
 --------------------------------------------------------------------------------
 -- | The compiler monad
-newtype CompilerM a = CompilerM
-    { unCompilerM :: ErrorT String (ReaderT CompilerEnvironment IO) a
+newtype CompilerM i a = CompilerM
+    { unCompilerM :: ErrorT String (ReaderT (CompilerEnvironment i) IO) a
     } deriving (Monad, Functor, Applicative)
 
 
@@ -73,7 +68,7 @@ newtype CompilerM a = CompilerM
 -- | The compiler arrow
 data Compiler i a b = Compiler
     { compilerDependencies :: Dependencies i
-    , compilerJob          :: a -> CompilerM b
+    , compilerJob          :: a -> CompilerM i b
     }
 
 
@@ -113,21 +108,15 @@ instance ArrowChoice (Compiler i) where
 --------------------------------------------------------------------------------
 -- | Calculate the dependencies of a compiler
 runCompilerDependencies :: Compiler i () a
-                        -> [SomeItem]
-                        -> [i]
+                        -> Population i
                         -> [String]
-runCompilerDependencies compiler items userdatas =
-    compilerDependencies compiler env
-  where
-    env = DependencyEnvironment
-            { dependencyItems     = items
-            , dependencyUserdatas = userdatas
-            }
+runCompilerDependencies = compilerDependencies
 
 
 --------------------------------------------------------------------------------
 -- | Run a compiler, yielding the resulting target
 runCompilerJob :: Compiler i () a
+               -> Population i
                -> SomeItem
                -> ResourceProvider
                -> (String -> Maybe FilePath)
@@ -135,19 +124,19 @@ runCompilerJob :: Compiler i () a
                -> Bool
                -> Logger
                -> IO (Either String a)
-runCompilerJob compiler item provider routes store modified logger =
+runCompilerJob compiler denv item provider routes store modified logger =
     runReaderT (runErrorT $ unCompilerM $ compilerJob compiler ()) env
   where
-    env = CompilerEnvironment item provider routes store modified logger
+    env = CompilerEnvironment denv item provider routes store modified logger
 
 
 --------------------------------------------------------------------------------
-fromDependencies :: (DependencyEnvironment i -> [String])
+fromDependencies :: (Population i -> [String])
                  -> Compiler i b b
 fromDependencies = flip Compiler return
 
 
 --------------------------------------------------------------------------------
-fromJob :: (a -> CompilerM b)
+fromJob :: (a -> CompilerM i b)
         -> Compiler i a b
 fromJob = Compiler mempty

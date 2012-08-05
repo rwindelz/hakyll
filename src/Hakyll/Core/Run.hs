@@ -66,14 +66,14 @@ run configuration populate compile' route' = do
         Provider.new (ignoreFile configuration) "."
 
     -- Populate
-    population <- timed logger "Populating..." $ runPopulate populate provider
-    let compilation = M.fromList $ flip map population $
+    pop <- timed logger "Populating..." $ runPopulate populate provider
+    let comp = M.fromList $ flip map pop $
             \(id', (item, ud)) -> (id', (item, ud, compile' ud))
 
-    (todo, modified) <- order logger store provider population compilation
+    (todo, modified) <- order logger store provider pop comp
 
     foldM_
-        (build configuration logger store provider compilation route' modified)
+        (build configuration logger store provider pop comp route' modified)
         M.empty todo
 
 
@@ -93,9 +93,8 @@ order logger store provider population compilation = do
     let newGraph  = fromList depsList
         compilers = M.toList compilation
         items     = populationItems population
-        userdatas = populationUserdatas population
         depsList  = flip map compilers $ \(id', (_, _, Compile compiler)) ->
-            (id', runCompilerDependencies compiler items userdatas)
+            (id', runCompilerDependencies compiler population)
 
     -- For each item that has a resource, check whether it has been modified
     modified <- flip filterM items $ \(SomeItem i) -> case itemResource i of
@@ -125,26 +124,28 @@ build :: HakyllConfiguration
       -> Logger
       -> Store
       -> ResourceProvider
+      -> Population i
       -> Compilation i
       -> (i -> Route)
       -> (String -> Bool)
       -> Map String FilePath
       -> String
       -> IO (Map String FilePath)
-build config logger store provider compilation route' modified routes id' = do
-    putStrLn $ "Building " ++ id'
+build config logger store provider pop comp route' modified routes id' = do
+    section logger $ "Building " ++ id'
 
 
-    r <- runCompilerJob compiler someItem provider (`M.lookup` routes)
+    r <- runCompiler compiler pop someItem provider (`M.lookup` routes)
         store (modified id') logger
 
     case r of
         Left err      -> fail err   -- TODO
         Right (Box x) -> do
             mroute <- runRoute (route' userdata) dir x
+            section logger $ show mroute
             return $ maybe routes (\r -> M.insert id' r routes) mroute
   where
-    (someItem, userdata, Compile compiler) = compilation M.! id'
+    (someItem, userdata, Compile compiler) = comp M.! id'
     dir = destinationDirectory config
 {-
     let ruleSet = runRules rules provider

@@ -140,6 +140,7 @@ import           System.FilePath                     (takeExtension)
 import           Hakyll.Core.Compiler.Internal
 import           Hakyll.Core.Item
 import           Hakyll.Core.Logger
+import           Hakyll.Core.Populate
 import           Hakyll.Core.Resource
 import           Hakyll.Core.Resource.Metadata.Cache
 import           Hakyll.Core.Resource.Provider
@@ -161,6 +162,7 @@ box = arr Box
 -- | Run a compiler, yielding the resulting target. This version of
 -- 'runCompilerJob' also stores the result and catches possible exceptions.
 runCompiler :: Compiler i () Box
+            -> Population i
             -> SomeItem
             -> ResourceProvider
             -> (String -> Maybe FilePath)
@@ -168,10 +170,10 @@ runCompiler :: Compiler i () Box
             -> Bool
             -> Logger
             -> IO (Either String Box)
-runCompiler compiler item provider routes store modified logger = do
+runCompiler compiler denv item provider routes store modified logger = do
     -- Run the compiler job
     result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
-        runCompilerJob compiler item provider routes store modified logger
+        runCompilerJob compiler denv item provider routes store modified logger
 
     -- Store a copy in the cache first, before we return control. This makes
     -- sure the compiled item can later be accessed by e.g. require.
@@ -223,6 +225,34 @@ getResourceBody = fromJob $ \rs -> CompilerM $ do
     liftIO $ resourceBody provider store rs
 
 
+--------------------------------------------------------------------------------
+selectItems :: (Binary a, Typeable a) => ([i] -> [Item a]) -> Compiler i b [a]
+selectItems selector = fromDependencies ids >>> fromJob job
+  where
+    ids = map itemIdentifier . selector . map (snd . snd)
+    job = \_ -> CompilerM $ do
+        ids' <- ids . compilerPopulation <$> ask
+        mapM (unCompilerM . fromStore) ids'
+
+
+--------------------------------------------------------------------------------
+-- | Auxiliary: get a dependency
+fromStore :: (Binary a, Typeable a)
+          => String -> CompilerM i a
+fromStore id' = CompilerM $ do
+    store  <- compilerStore <$> ask
+    result <- liftIO $ Store.get store
+        ["Hakyll.Core.Compiler.runCompiler", id']
+    case result of
+        Nothing -> throwError notFound
+        Just x  -> return x
+  where
+    notFound =
+        "Hakyll.Core.Compiler.getDependency: " ++ show id' ++ " was " ++
+        "not found in the cache, the cache might be corrupted or " ++
+        "the item you are referring to might not exist"
+
+
 {-
 -- | Get the resource we are compiling as a lazy bytestring
 --
@@ -243,22 +273,6 @@ getResourceWith reader = fromJob $ \r -> CompilerM $ do
     error' id' =  "Hakyll.Core.Compiler.getResourceWith: resource "
                ++ show id' ++ " not found"
 
--- | Auxiliary: get a dependency
---
-getDependency :: (Binary a, Writable a, Typeable a)
-              => Identifier a -> CompilerM a
-getDependency id' = CompilerM $ do
-    store <- compilerStore <$> ask
-    result <- liftIO $ Store.get store
-        ["Hakyll.Core.Compiler.runCompiler", show id']
-    case result of
-        Nothing -> throwError notFound
-        Just x  -> return x
-  where
-    notFound =
-        "Hakyll.Core.Compiler.getDependency: " ++ show id' ++ " was " ++
-        "not found in the cache, the cache might be corrupted or " ++
-        "the item you are referring to might not exist"
 
 -- | Variant of 'require' which drops the current value
 --
@@ -340,14 +354,6 @@ unsafeCompiler :: (a -> IO b)   -- ^ Function to lift
                -> Compiler a b  -- ^ Resulting compiler
 unsafeCompiler f = fromJob $ CompilerM . liftIO . f
 
--- | Compiler for debugging purposes
---
-traceShowCompiler :: Show a => Compiler a a
-traceShowCompiler = fromJob $ \x -> CompilerM $ do
-    logger <- compilerLogger <$> ask
-    report logger $ show x
-    return x
-
 -- | Map over a compiler
 --
 mapCompiler :: Compiler a b
@@ -411,3 +417,13 @@ byExtension defaultCompiler = byPattern defaultCompiler . map (first extPattern)
   where
     extPattern c = predicate $ (== c) . takeExtension . toFilePath
 -}
+
+
+--------------------------------------------------------------------------------
+-- | Compiler for debugging purposes
+--
+traceShowCompiler :: Show a => Compiler i a a
+traceShowCompiler = fromJob $ \x -> CompilerM $ do
+    logger <- compilerLogger <$> ask
+    report logger $ show x
+    return x
