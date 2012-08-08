@@ -17,10 +17,8 @@ import           Control.Exception   (IOException, handle)
 import qualified Crypto.Hash.MD5     as MD5
 import           Data.Binary         (Binary, decodeFile, encodeFile)
 import qualified Data.ByteString     as B
-import           Data.IORef          (IORef, modifyIORef, newIORef, readIORef)
+import qualified Data.Cache.LRU.IO   as Lru
 import           Data.List           (intercalate)
-import           Data.Map            (Map)
-import qualified Data.Map            as M
 import qualified Data.Text           as T
 import qualified Data.Text.Encoding  as T
 import           System.Directory    (createDirectoryIfMissing)
@@ -40,7 +38,7 @@ data Store = Store
     { -- | All items are stored on the filesystem
       storeDirectory :: FilePath
     , -- | Optionally, items are also kept in-memory
-      storeMap       :: Maybe (IORef (Map String Box))
+      storeMap       :: Maybe (Lru.AtomicLRU FilePath Box)
     }
 
 
@@ -51,28 +49,30 @@ new :: Bool      -- ^ Use in-memory caching
     -> IO Store  -- ^ Store
 new inMemory directory = do
     createDirectoryIfMissing True directory
-    ref <- if inMemory then Just <$> newIORef M.empty else return Nothing
+    ref <- if inMemory then Just <$> Lru.newAtomicLRU csize else return Nothing
     return Store
         { storeDirectory = directory
         , storeMap       = ref
         }
+  where
+    csize = Just 500
 
 
 --------------------------------------------------------------------------------
 -- | Auxiliary: add an item to the in-memory cache
 cacheInsert :: Store -> String -> a -> IO ()
 cacheInsert (Store _ Nothing)    _   _     = return ()
-cacheInsert (Store _ (Just ref)) key x =
-    modifyIORef ref $ M.insert key (Box x)
+cacheInsert (Store _ (Just lru)) key x =
+    Lru.insert key (Box x) lru
 
 
 --------------------------------------------------------------------------------
 -- | Auxiliary: get an item from the in-memory cache
 cacheLookup :: Store -> String -> IO (Maybe a)
 cacheLookup (Store _ Nothing)    _   = return Nothing
-cacheLookup (Store _ (Just ref)) key = do
-    map' <- readIORef ref
-    case M.lookup key map' of
+cacheLookup (Store _ (Just lru)) key = do
+    res <- Lru.lookup key lru
+    case res of
         Nothing      -> return Nothing
         Just (Box x) -> return $ Just $ unsafeCoerce x
 
@@ -81,7 +81,9 @@ cacheLookup (Store _ (Just ref)) key = do
 -- | Auxiliary: delete an item from the in-memory cache
 cacheDelete :: Store -> String -> IO ()
 cacheDelete (Store _ Nothing)    _   = return ()
-cacheDelete (Store _ (Just ref)) key = modifyIORef ref (M.delete key)
+cacheDelete (Store _ (Just lru)) key = do
+    _ <- Lru.delete key lru
+    return ()
 
 
 --------------------------------------------------------------------------------
