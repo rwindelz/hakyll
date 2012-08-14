@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
 {-# LANGUAGE DeriveDataTypeable, ExistentialQuantification #-}
 module Hakyll.Core.Item
-    ( Item (..)
+    ( ItemIdentifier
+    , Item (..)
     , makeItem
 
     , SomeItem (..)
@@ -19,8 +20,13 @@ import           Hakyll.Core.Resource
 
 
 --------------------------------------------------------------------------------
+-- | Should only be internally used
+type ItemIdentifier = String
+
+
+--------------------------------------------------------------------------------
 data Item a = Item
-    { itemIdentifier :: String
+    { itemIdentifier :: ItemIdentifier
     , itemResource   :: Maybe Resource
     } deriving (Typeable)
 
@@ -47,7 +53,7 @@ instance Show (Item a) where
 
 
 --------------------------------------------------------------------------------
-makeItem :: String -> Maybe Resource -> Item a
+makeItem :: ItemIdentifier -> Maybe Resource -> Item a
 makeItem = Item
 
 
@@ -66,5 +72,5 @@ castItem (SomeItem x) = cast x
 
 
 --------------------------------------------------------------------------------
-someItemIdentifier :: SomeItem -> String
+someItemIdentifier :: SomeItem -> ItemIdentifier
 someItemIdentifier (SomeItem item) = itemIdentifier item

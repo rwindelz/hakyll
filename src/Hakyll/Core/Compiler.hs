@@ -138,6 +138,8 @@ import           System.FilePath                     (takeExtension)
 
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Compiler.Store          as Compiler.Store
+import qualified Hakyll.Core.Compiler.Store
 import           Hakyll.Core.Item
 import           Hakyll.Core.Logger
 import           Hakyll.Core.Populate
@@ -145,17 +147,7 @@ import           Hakyll.Core.Resource
 import           Hakyll.Core.Resource.Metadata.Cache
 import           Hakyll.Core.Resource.Provider
 import           Hakyll.Core.Store                   (Store)
-import qualified Hakyll.Core.Store                   as Store
 import           Hakyll.Core.Writable
-
-
---------------------------------------------------------------------------------
-data Box = forall a. (Binary a, Typeable a) => Box a
-
-
---------------------------------------------------------------------------------
-box :: (Binary a, Typeable a) => Compiler i a Box
-box = arr Box
 
 
 --------------------------------------------------------------------------------
@@ -165,7 +157,7 @@ runCompiler :: Compiler i () Box
             -> Population i
             -> SomeItem
             -> ResourceProvider
-            -> (String -> Maybe FilePath)
+            -> (ItemIdentifier -> Maybe FilePath)
             -> Store
             -> Bool
             -> Logger
@@ -174,14 +166,7 @@ runCompiler compiler denv item provider routes store modified logger = do
     -- Run the compiler job
     result <- handle (\(e :: SomeException) -> return $ Left $ show e) $
         runCompilerJob compiler denv item provider routes store modified logger
-
-    -- Store a copy in the cache first, before we return control. This makes
-    -- sure the compiled item can later be accessed by e.g. require.
-    case result of
-        Left  _       -> return ()
-        Right (Box x) ->
-            Store.set store ["Hakyll.Core.Compiler.runCompiler", id'] x
-
+    either (const $ return ()) (setBox store $ someItemIdentifier item) result
     return result
   where
     id' = someItemIdentifier item
@@ -230,27 +215,17 @@ selectItems :: (Binary a, Typeable a) => ([i] -> [Item a]) -> Compiler i b [a]
 selectItems selector = fromDependencies ids >>> fromJob job
   where
     ids = map itemIdentifier . selector . map (snd . snd)
-    job = \_ -> CompilerM $ do
+    job   = \_ -> CompilerM $ do
         ids' <- ids . compilerPopulation <$> ask
         mapM (unCompilerM . fromStore) ids'
 
 
 --------------------------------------------------------------------------------
 -- | Auxiliary: get a dependency
-fromStore :: (Binary a, Typeable a)
-          => String -> CompilerM i a
+fromStore :: (Binary a, Typeable a) => ItemIdentifier -> CompilerM i a
 fromStore id' = CompilerM $ do
-    store  <- compilerStore <$> ask
-    result <- liftIO $ Store.get store
-        ["Hakyll.Core.Compiler.runCompiler", id']
-    case result of
-        Nothing -> throwError notFound
-        Just x  -> return x
-  where
-    notFound =
-        "Hakyll.Core.Compiler.getDependency: " ++ show id' ++ " was " ++
-        "not found in the cache, the cache might be corrupted or " ++
-        "the item you are referring to might not exist"
+    store <- compilerStore <$> ask
+    unCompilerM $ getBox store id'
 
 
 {-

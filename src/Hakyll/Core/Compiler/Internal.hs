@@ -34,7 +34,7 @@ import           Hakyll.Core.Store
 
 
 --------------------------------------------------------------------------------
-type Dependencies i = Population i -> [String]
+type Dependencies i = Population i -> [ItemIdentifier]
 
 
 --------------------------------------------------------------------------------
@@ -47,7 +47,7 @@ data CompilerEnvironment i = CompilerEnvironment
     , -- | Resource provider
       compilerResourceProvider :: ResourceProvider
     , -- | Compiler routes
-      compilerRoutes           :: String -> Maybe FilePath
+      compilerRoutes           :: ItemIdentifier -> Maybe FilePath
     , -- | Compiler store
       compilerStore            :: Store
     , -- | Flag indicating if the underlying resource was modified
@@ -109,7 +109,7 @@ instance ArrowChoice (Compiler i) where
 -- | Calculate the dependencies of a compiler
 runCompilerDependencies :: Compiler i () a
                         -> Population i
-                        -> [String]
+                        -> [ItemIdentifier]
 runCompilerDependencies = compilerDependencies
 
 
@@ -119,7 +119,7 @@ runCompilerJob :: Compiler i () a
                -> Population i
                -> SomeItem
                -> ResourceProvider
-               -> (String -> Maybe FilePath)
+               -> (ItemIdentifier -> Maybe FilePath)
                -> Store
                -> Bool
                -> Logger
@@ -131,7 +131,7 @@ runCompilerJob compiler denv item provider routes store modified logger =
 
 
 --------------------------------------------------------------------------------
-fromDependencies :: (Population i -> [String])
+fromDependencies :: (Population i -> [ItemIdentifier])
                  -> Compiler i b b
 fromDependencies = flip Compiler return
 

@@ -28,6 +28,7 @@ import           System.FilePath                ((</>))
 import           Hakyll.Core.Compile
 import           Hakyll.Core.Compiler
 import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Compiler.Store
 import           Hakyll.Core.Configuration
 import           Hakyll.Core.DependencyAnalyzer
 import           Hakyll.Core.DirectedGraph

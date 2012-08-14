@@ -15,6 +15,7 @@ import           Data.Typeable                 (Typeable)
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Compiler
 import           Hakyll.Core.Compiler.Internal
+import           Hakyll.Core.Compiler.Store
 import           Hakyll.Core.Item
 import           Hakyll.Core.Resource
 
@@ -26,10 +27,10 @@ newtype Compile i = Compile (Compiler i () Box)
 --------------------------------------------------------------------------------
 create :: (Binary a, Typeable a)
        => Item a -> Compiler i () a -> Compile i
-create _ compiler = Compile (compiler >>> box)
+create _ compiler = Compile (compiler >>> arr Box)
 
 
 --------------------------------------------------------------------------------
 compile :: (Binary a, Typeable a)
         => Item a -> Compiler i Resource a -> Compile i
-compile _ compiler = Compile (getResource >>> compiler >>> box)
+compile _ compiler = Compile (getResource >>> compiler >>> arr Box)
