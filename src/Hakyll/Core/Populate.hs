@@ -4,7 +4,7 @@ module Hakyll.Core.Populate
     ( Population
     , populationItems
     , populationUserdatas
-    
+
     , PopulateM
     , Populate
     , runPopulate
@@ -26,8 +26,8 @@ import           Data.Typeable                 (Typeable)
 
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Item
-import           Hakyll.Core.Pattern
 import           Hakyll.Core.Resource
+import           Hakyll.Core.Resource.Pattern
 import           Hakyll.Core.Resource.Provider
 
 
@@ -78,7 +78,7 @@ match :: (Show i, Typeable a)
 match pattern f = PopulateM $ do
     provider <- ask
     forM_ (resourceList provider) $ \rs ->
-        case capture pattern (unResource rs) of
+        case capture pattern rs of
             Nothing -> return ()
             Just cs -> tell $ makePopulation (Just rs) (f cs)
 

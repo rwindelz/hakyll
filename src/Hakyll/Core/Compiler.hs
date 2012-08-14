@@ -210,6 +210,7 @@ getResourceBody = fromJob $ \rs -> CompilerM $ do
     liftIO $ resourceBody provider store rs
 
 
+{-
 --------------------------------------------------------------------------------
 selectItems :: (Binary a, Typeable a) => ([i] -> [Item a]) -> Compiler i b [a]
 selectItems selector = fromDependencies ids >>> fromJob job
@@ -218,14 +219,7 @@ selectItems selector = fromDependencies ids >>> fromJob job
     job   = \_ -> CompilerM $ do
         ids' <- ids . compilerPopulation <$> ask
         mapM (unCompilerM . fromStore) ids'
-
-
---------------------------------------------------------------------------------
--- | Auxiliary: get a dependency
-fromStore :: (Binary a, Typeable a) => ItemIdentifier -> CompilerM i a
-fromStore id' = CompilerM $ do
-    store <- compilerStore <$> ask
-    unCompilerM $ getBox store id'
+-}
 
 
 {-

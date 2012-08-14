@@ -35,7 +35,7 @@
 -- Like an 'Identifier', a 'Pattern' also has a type parameter. This is simply
 -- an extra layer of safety, and can be discarded using the 'castPattern'
 -- function.
-module Hakyll.Core.Pattern
+module Hakyll.Core.Resource.Pattern
     ( Pattern
     , parsePattern
     , capture
@@ -43,10 +43,14 @@ module Hakyll.Core.Pattern
 
 
 --------------------------------------------------------------------------------
-import           Control.Arrow ((&&&), (>>>))
-import           Control.Monad (msum)
-import           Data.List     (inits, isPrefixOf, tails)
-import           GHC.Exts      (IsString, fromString)
+import           Control.Arrow                ((&&&), (>>>))
+import           Control.Monad                (msum)
+import           Data.List                    (inits, isPrefixOf, tails)
+import           GHC.Exts                     (IsString, fromString)
+
+
+--------------------------------------------------------------------------------
+import           Hakyll.Core.Resource
 
 
 --------------------------------------------------------------------------------
@@ -92,8 +96,8 @@ splits = inits &&& tails >>> uncurry zip >>> reverse
 
 --------------------------------------------------------------------------------
 -- | Match a glob against a pattern, generating a list of captures
-capture :: Pattern -> FilePath -> Maybe [String]
-capture (Pattern p) = capture' p
+capture :: Pattern -> Resource -> Maybe [String]
+capture (Pattern p) rs = capture' p (unResource rs)
 
 
 --------------------------------------------------------------------------------

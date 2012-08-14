@@ -1,31 +1,31 @@
+--------------------------------------------------------------------------------
 -- | Module exporting the simple 'Resource' type
---
 module Hakyll.Core.Resource
     ( Resource
-    , unResource
     , resource
-    , fromIdentifier
-    , toIdentifier
+    , unResource
     ) where
 
-import Hakyll.Core.Identifier
 
+--------------------------------------------------------------------------------
+import           Data.List       (intercalate)
+import           GHC.Exts        (IsString (..))
+import           System.FilePath (dropTrailingPathSeparator, splitPath)
+
+
+--------------------------------------------------------------------------------
 -- | A resource
---
 newtype Resource = Resource {unResource :: FilePath}
     deriving (Eq, Show, Ord)
 
+
+--------------------------------------------------------------------------------
+instance IsString Resource where
+    fromString = resource
+
+
+--------------------------------------------------------------------------------
 -- | Smart constructor to ensure we have @/@ as path separator
---
 resource :: FilePath -> Resource
-resource = fromIdentifier . parseIdentifier
-
--- | Create a resource from an identifier
---
-fromIdentifier :: Identifier a -> Resource
-fromIdentifier = Resource . toFilePath
-
--- | Map the resource to an identifier. Note that the group will not be set!
---
-toIdentifier :: Resource -> Identifier a
-toIdentifier = parseIdentifier . unResource
+resource = Resource .  intercalate "/" .
+    filter (not . null) . map dropTrailingPathSeparator . splitPath
