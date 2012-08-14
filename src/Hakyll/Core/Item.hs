@@ -26,6 +26,22 @@ data Item a = Item
 
 
 --------------------------------------------------------------------------------
+-- | All items are equal to each other. This is perhaps a bit of a hack but at
+-- least it has proper transitivity and reflexitivity, which can't be said about
+-- PHP.
+--
+-- This allows us to compare two userdata values without a filled-in item.
+instance Eq (Item a) where
+    _ == _ = True
+
+
+--------------------------------------------------------------------------------
+-- | Ord instance should follow the Eq instance.
+instance Ord (Item a) where
+    compare _ _ = EQ
+
+
+--------------------------------------------------------------------------------
 instance Show (Item a) where
     show _ = "<Item>"
 
