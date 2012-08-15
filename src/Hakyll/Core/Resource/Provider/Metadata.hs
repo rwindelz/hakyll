@@ -1,48 +1,42 @@
 --------------------------------------------------------------------------------
-module Hakyll.Core.Resource.Metadata
-    ( Metadata
-    , metadataFilePath
-    , loadMetadata
+-- | Internal module to parse metadata
+module Hakyll.Core.Resource.Provider.Metadata
+    ( loadMetadata
     ) where
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative     ((<$>), (<*), (<*>))
-import           Control.Arrow           (second)
-import qualified Data.ByteString.Char8   as BC
-import           Data.Map                (Map)
-import qualified Data.Map                as M
-import           System.FilePath         (addExtension)
-import           System.IO               as IO
-import           Text.Parsec             ((<?>))
-import qualified Text.Parsec             as P
-import           Text.Parsec.String      (Parser)
+import           Control.Applicative                    ((<$>), (<*), (<*>))
+import           Control.Arrow                          (second)
+import qualified Data.ByteString.Char8                  as BC
+import qualified Data.Map                               as M
+import           System.IO                              as IO
+import           Text.Parsec                            ((<?>))
+import qualified Text.Parsec                            as P
+import           Text.Parsec.String                     (Parser)
 
 
 --------------------------------------------------------------------------------
+import           Hakyll.Core.Resource
+import           Hakyll.Core.Resource.Provider.Internal
 import           Hakyll.Core.Util.String
 
 
 --------------------------------------------------------------------------------
-type Metadata = Map String String
-
-
---------------------------------------------------------------------------------
-metadataFilePath :: FilePath -> FilePath
-metadataFilePath = flip addExtension "metadata"
-
-
---------------------------------------------------------------------------------
-loadMetadata :: FilePath -> Maybe FilePath -> IO (Metadata, Maybe String)
-loadMetadata fp mfp = do
+loadMetadata :: ResourceProvider -> Resource -> IO (Metadata, Maybe String)
+loadMetadata rp r = do
     hasHeader  <- probablyHasMetadataHeader fp
     (md, body) <- if hasHeader
         then second Just <$> loadMetadataHeader fp
         else return (M.empty, Nothing)
 
-    emd <- maybe (return M.empty) loadMetadataFile mfp
+    emd <- if resourceExists rp mr then loadMetadataFile mfp else return M.empty
 
     return (M.union md emd, body)
+  where
+    fp  = unResource r
+    mr  = resourceMetadataResource r
+    mfp = unResource mr
 
 
 --------------------------------------------------------------------------------

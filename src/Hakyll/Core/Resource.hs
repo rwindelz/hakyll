@@ -4,11 +4,14 @@ module Hakyll.Core.Resource
     ( Resource
     , resource
     , unResource
+
+    , Metadata
     ) where
 
 
 --------------------------------------------------------------------------------
 import           Data.List       (intercalate)
+import           Data.Map        (Map)
 import           GHC.Exts        (IsString (..))
 import           System.FilePath (dropTrailingPathSeparator, splitPath)
 
@@ -29,3 +32,7 @@ instance IsString Resource where
 resource :: FilePath -> Resource
 resource = Resource .  intercalate "/" .
     filter (not . null) . map dropTrailingPathSeparator . splitPath
+
+
+--------------------------------------------------------------------------------
+type Metadata = Map String String

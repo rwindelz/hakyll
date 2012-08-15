@@ -121,32 +121,31 @@ module Hakyll.Core.Compiler where
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative                 ((<$>))
-import           Control.Arrow                       (arr, first, (&&&), (>>>))
-import           Control.Category                    (Category, id, (.))
-import           Control.Exception                   (SomeException, handle)
-import           Control.Monad.Error                 (throwError)
-import           Control.Monad.Reader                (ask)
-import           Control.Monad.Trans                 (liftIO)
-import           Data.Binary                         (Binary)
-import           Data.ByteString.Lazy                (ByteString)
-import           Data.List                           (find)
-import           Data.Typeable                       (Typeable)
-import           Prelude                             hiding (id, (.))
-import           System.FilePath                     (takeExtension)
+import           Control.Applicative           ((<$>))
+import           Control.Arrow                 (arr, first, (&&&), (>>>))
+import           Control.Category              (Category, id, (.))
+import           Control.Exception             (SomeException, handle)
+import           Control.Monad.Error           (throwError)
+import           Control.Monad.Reader          (ask)
+import           Control.Monad.Trans           (liftIO)
+import           Data.Binary                   (Binary)
+import           Data.ByteString.Lazy          (ByteString)
+import           Data.List                     (find)
+import           Data.Typeable                 (Typeable)
+import           Prelude                       hiding (id, (.))
+import           System.FilePath               (takeExtension)
 
 
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Compiler.Internal
-import           Hakyll.Core.Compiler.Store          as Compiler.Store
+import           Hakyll.Core.Compiler.Store    as Compiler.Store
 import qualified Hakyll.Core.Compiler.Store
 import           Hakyll.Core.Item
 import           Hakyll.Core.Logger
 import           Hakyll.Core.Populate
 import           Hakyll.Core.Resource
-import           Hakyll.Core.Resource.Metadata.Cache
 import           Hakyll.Core.Resource.Provider
-import           Hakyll.Core.Store                   (Store)
+import           Hakyll.Core.Store             (Store)
 import           Hakyll.Core.Writable
 
 

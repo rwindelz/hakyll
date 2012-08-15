@@ -37,7 +37,6 @@ import           Hakyll.Core.Logger
 import           Hakyll.Core.Populate
 import           Hakyll.Core.Resource
 import           Hakyll.Core.Resource.Provider
-import qualified Hakyll.Core.Resource.Provider  as Provider
 import           Hakyll.Core.Route
 import           Hakyll.Core.Store              (Store)
 import qualified Hakyll.Core.Store              as Store
@@ -63,7 +62,7 @@ run configuration populate compile' route' = do
     store <- timed logger "Creating store" $
         Store.new (inMemoryCache configuration) $ storeDirectory configuration
     provider <- timed logger "Creating resource provider" $
-        Provider.new (ignoreFile configuration) "."
+        newResourceProvider (ignoreFile configuration) "."
 
     -- Populate
     pop <- timed logger "Populating..." $ runPopulate populate provider
