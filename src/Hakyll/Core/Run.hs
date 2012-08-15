@@ -1,7 +1,5 @@
 --------------------------------------------------------------------------------
 -- | This is the module which binds it all together
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE OverloadedStrings          #-}
 module Hakyll.Core.Run
     ( run
     ) where
@@ -9,6 +7,7 @@ module Hakyll.Core.Run
 
 --------------------------------------------------------------------------------
 import           Control.Applicative            (Applicative, (<$>))
+import           Control.DeepSeq                (deepseq)
 import           Control.Monad                  (filterM, foldM_, forM_)
 import           Control.Monad.Error            (ErrorT, runErrorT, throwError)
 import           Control.Monad.Reader           (ReaderT, ask, runReaderT)
@@ -47,7 +46,7 @@ import           Hakyll.Core.Writable
 
 
 --------------------------------------------------------------------------------
-type Compilation i = Map String (SomeItem, i, Compile i)
+type Compilation i = Map ItemIdentifier (SomeItem, i, Compile i)
 
 
 --------------------------------------------------------------------------------
@@ -80,15 +79,15 @@ run configuration populate compile' route' = do
 
 --------------------------------------------------------------------------------
 order :: Logger -> Store -> ResourceProvider -> Population i -> Compilation i
-      -> IO ([String], (String -> Bool))
+      -> IO ([ItemIdentifier], (ItemIdentifier -> Bool))
 order logger store provider population compilation = do
     -- Fetch the old graph from the store
-    mgraph <- Store.get store ["Hakyll.Core.Run.run", "dependencies"]
+    mgraph <- Store.get store ["Hakyll.Core.Run.order", "dependencies"]
     let (oldGraph, firstRun) = case mgraph of
             Nothing -> (mempty, True)
             Just g  -> (g, False)
 
-    let _ = oldGraph :: DirectedGraph String
+    let _ = oldGraph :: DirectedGraph ItemIdentifier
 
     -- Build new dependency graph
     let newGraph  = fromList depsList
@@ -96,6 +95,11 @@ order logger store provider population compilation = do
         items     = populationItems population
         depsList  = flip map compilers $ \(id', (_, _, Compile compiler)) ->
             (id', runCompilerDependencies compiler population)
+
+    -- Store the new graph, but make sure the old graph is fully evaluated
+    -- first, because if it's not, the store file might still be open.
+    oldGraph `deepseq`
+        Store.set store ["Hakyll.Core.Run.order", "dependencies"] newGraph
 
     -- For each item that has a resource, check whether it has been modified
     modified <- flip filterM items $ \(SomeItem i) -> case itemResource i of
@@ -113,7 +117,7 @@ order logger store provider population compilation = do
 
 --------------------------------------------------------------------------------
 -- | Dump cycle error and quit
-dumpCycle :: Logger -> [String] -> IO ()
+dumpCycle :: Logger -> [ItemIdentifier] -> IO ()
 dumpCycle logger cycle' = do
     section logger "Dependency cycle detected! Conflict:"
     forM_ (zip cycle' $ drop 1 cycle') $ \(x, y) ->
@@ -128,10 +132,10 @@ build :: HakyllConfiguration
       -> Population i
       -> Compilation i
       -> (i -> Route)
-      -> (String -> Bool)
-      -> Map String FilePath
-      -> String
-      -> IO (Map String FilePath)
+      -> (ItemIdentifier -> Bool)
+      -> Map ItemIdentifier FilePath
+      -> ItemIdentifier
+      -> IO (Map ItemIdentifier FilePath)
 build config logger store provider pop comp route' modified routes id' = do
     section logger $ "Building " ++ id'
 

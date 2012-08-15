@@ -16,22 +16,23 @@ module Hakyll.Core.DirectedGraph
 
 
 --------------------------------------------------------------------------------
-import           Control.Arrow (second)
-import           Data.Binary   (Binary)
-import           Data.Map      (Map)
-import qualified Data.Map      as M
-import           Data.Maybe    (fromMaybe)
-import           Data.Monoid   (Monoid(..))
-import           Data.Set      (Set)
-import qualified Data.Set      as S
-import           Data.Typeable (Typeable)
-import           Prelude       hiding (reverse)
+import           Control.Arrow   (second)
+import           Control.DeepSeq (NFData)
+import           Data.Binary     (Binary)
+import           Data.Map        (Map)
+import qualified Data.Map        as M
+import           Data.Maybe      (fromMaybe)
+import           Data.Monoid     (Monoid (..))
+import           Data.Set        (Set)
+import qualified Data.Set        as S
+import           Data.Typeable   (Typeable)
+import           Prelude         hiding (reverse)
 
 
 --------------------------------------------------------------------------------
 -- | Type used to represent a directed graph
 newtype DirectedGraph a = DirectedGraph {unDirectedGraph :: Map a [a]}
-    deriving (Show, Binary, Typeable)
+    deriving (Show, Binary, NFData, Typeable)
 
 
 --------------------------------------------------------------------------------
