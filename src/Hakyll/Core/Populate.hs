@@ -6,7 +6,6 @@ module Hakyll.Core.Populate
     , populationUserdatas
 
     , PopulateM
-    , Populate
     , runPopulate
 
     , match
@@ -15,12 +14,13 @@ module Hakyll.Core.Populate
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative           (Applicative)
-import           Control.Monad                 (forM_)
-import           Control.Monad.Reader          (ReaderT, ask, runReaderT)
+import           Control.Applicative           (Applicative, (<$>))
+import           Control.Monad                 (forM)
+import           Control.Monad.Reader          (ReaderT, ask, local, runReaderT)
 import           Control.Monad.Trans           (MonadIO)
 import           Control.Monad.Writer          (WriterT, execWriterT, tell)
 import qualified Data.Map                      as M
+import           Data.Maybe                    (catMaybes)
 import           Data.Typeable                 (Typeable)
 
 
@@ -46,43 +46,49 @@ populationUserdatas = map (snd . snd)
 
 
 --------------------------------------------------------------------------------
-makePopulation :: (Show i, Typeable a)
-               => Maybe Resource -> (Item a -> i) -> Population i
-makePopulation rs f =
-    let item     = makeItem itemid rs
-        userdata = f item
-        itemid   = show userdata
-    in [(itemid, (SomeItem item, userdata))]
+data PopulateEnv = PopulateEnv
+    { populateProvider :: ResourceProvider
+    , populateResource :: Maybe Resource
+    }
 
 
 --------------------------------------------------------------------------------
 newtype PopulateM i a = PopulateM
-    { unPopulateM :: ReaderT ResourceProvider (WriterT (Population i) IO) a
+    { unPopulateM :: ReaderT PopulateEnv (WriterT (Population i) IO) a
     } deriving (Applicative, Functor, Monad, MonadIO)
 
 
 --------------------------------------------------------------------------------
-type Populate i = PopulateM i ()
-
-
---------------------------------------------------------------------------------
-runPopulate :: Populate i -> ResourceProvider -> IO (Population i)
+runPopulate :: PopulateM i a -> ResourceProvider -> IO (Population i)
 runPopulate populate provider =
     fmap (M.toList . M.fromList) $  -- Ensure uniqueness
-    execWriterT $ runReaderT (unPopulateM populate) provider
+    execWriterT $ runReaderT (unPopulateM populate) $
+    PopulateEnv provider Nothing
 
 
 --------------------------------------------------------------------------------
-match :: (Show i, Typeable a)
-      => Pattern -> ([String] -> Item a -> i) -> Populate i
+withResource :: Resource -> PopulateM i a -> PopulateM i a
+withResource rs =
+    PopulateM . local (\env -> env {populateResource = Just rs}) . unPopulateM
+
+
+--------------------------------------------------------------------------------
+match :: Pattern -> (Resource -> [String] -> PopulateM i a) -> PopulateM i [a]
 match pattern f = PopulateM $ do
-    provider <- ask
-    forM_ (resourceList provider) $ \rs ->
+    provider <- populateProvider <$> ask
+    fmap catMaybes $ forM (resourceList provider) $ \rs ->
         case capture pattern rs of
-            Nothing -> return ()
-            Just cs -> tell $ makePopulation (Just rs) (f cs)
+            Nothing -> return Nothing
+            Just cs -> Just <$> unPopulateM (withResource rs (f rs cs))
 
 
 --------------------------------------------------------------------------------
-yield :: (Show i, Typeable a) => (Item a -> i) -> Populate i
-yield f = PopulateM $ tell $ makePopulation Nothing f
+yield :: (Show i, Typeable a) => (Item a -> i) -> PopulateM i i
+yield f = PopulateM $ do
+    rs <- populateResource <$> ask
+    let item     = makeItem itemid rs
+        userdata = f item
+        itemid   = show userdata
+
+    tell [(itemid, (SomeItem item, userdata))]
+    return userdata

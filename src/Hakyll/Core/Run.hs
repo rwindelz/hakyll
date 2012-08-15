@@ -52,7 +52,7 @@ type Compilation i = Map ItemIdentifier (SomeItem, i, Compile i)
 --------------------------------------------------------------------------------
 -- | Run all rules needed, return the rule set used
 run :: HakyllConfiguration
-    -> Populate i
+    -> PopulateM i a
     -> (i -> Compile i)
     -> (i -> Route)
     -> IO ()
