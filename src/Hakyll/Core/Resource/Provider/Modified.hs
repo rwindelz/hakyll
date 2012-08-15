@@ -24,8 +24,8 @@ import qualified Hakyll.Core.Store                           as Store
 
 --------------------------------------------------------------------------------
 -- | A resource is modified if it or its metadata has changed
-resourceModified :: ResourceProvider -> Store -> Resource -> IO Bool
-resourceModified rp store r
+resourceModified :: ResourceProvider -> Resource -> IO Bool
+resourceModified rp r
     | not exists = return False
     | otherwise  = do
         cache <- readIORef cacheRef
@@ -36,15 +36,16 @@ resourceModified rp store r
                 -- call to check if the metadata file was modified
                 m <- (||)
                     <$> fileDigestModified store (unResource r)
-                    <*> resourceModified rp store (resourceMetadataResource r)
+                    <*> resourceModified rp (resourceMetadataResource r)
                 modifyIORef cacheRef (M.insert r m)
 
                 -- Important!
-                when m $ resourceInvalidateMetadataCache store r
+                when m $ resourceInvalidateMetadataCache rp r
 
                 return m
   where
     exists   = resourceExists rp r
+    store    = resourceStore rp
     cacheRef = resourceModifiedCache rp
 
 

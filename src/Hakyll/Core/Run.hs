@@ -62,7 +62,7 @@ run configuration populate compile' route' = do
     store <- timed logger "Creating store" $
         Store.new (inMemoryCache configuration) $ storeDirectory configuration
     provider <- timed logger "Creating resource provider" $
-        newResourceProvider (ignoreFile configuration) "."
+        newResourceProvider store (ignoreFile configuration) "."
 
     -- Populate
     pop <- timed logger "Populating..." $ runPopulate populate provider
@@ -103,7 +103,7 @@ order logger store provider population compilation = do
     -- For each item that has a resource, check whether it has been modified
     modified <- flip filterM items $ \(SomeItem i) -> case itemResource i of
         Nothing -> return False
-        Just rs -> liftIO $ resourceModified provider store rs
+        Just rs -> liftIO $ resourceModified provider rs
     let modifiedSet = S.fromList $ map someItemIdentifier modified
         isModified  = if firstRun then const True else (`S.member` modifiedSet)
 

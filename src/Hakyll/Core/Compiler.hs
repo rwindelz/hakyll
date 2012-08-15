@@ -205,8 +205,7 @@ getResource = fromJob $ \_ -> CompilerM $ do
 getResourceBody :: Compiler i Resource String
 getResourceBody = fromJob $ \rs -> CompilerM $ do
     provider <- compilerResourceProvider <$> ask
-    store    <- compilerStore            <$> ask
-    liftIO $ resourceBody provider store rs
+    liftIO $ resourceBody provider rs
 
 
 {-

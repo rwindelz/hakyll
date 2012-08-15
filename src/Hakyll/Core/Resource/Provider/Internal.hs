@@ -24,6 +24,7 @@ import           System.FilePath       (addExtension)
 --------------------------------------------------------------------------------
 import           Hakyll.Core.Resource
 import           Hakyll.Core.Util.File
+import           Hakyll.Core.Store
 
 
 --------------------------------------------------------------------------------
@@ -33,19 +34,22 @@ data ResourceProvider = ResourceProvider
       resourceSet           :: Set Resource
     , -- | Cache keeping track of modified files
       resourceModifiedCache :: IORef (Map Resource Bool)
+    , -- | Underlying persistent store for caching
+      resourceStore         :: Store
     }
 
 
 --------------------------------------------------------------------------------
 -- | Create a resource provider
-newResourceProvider :: (FilePath -> Bool)   -- ^ Should we ignore this file?
+newResourceProvider :: Store                -- ^ Store to use
+                    -> (FilePath -> Bool)   -- ^ Should we ignore this file?
                     -> FilePath             -- ^ Search directory
                     -> IO ResourceProvider  -- ^ Resulting provider
-newResourceProvider ignore directory = do
+newResourceProvider store ignore directory = do
     list  <- map resource . filter (not . ignore) <$>
         getRecursiveContents False directory
     cache <- newIORef M.empty
-    return $ ResourceProvider (S.fromList list) cache
+    return $ ResourceProvider (S.fromList list) cache store
 
 
 --------------------------------------------------------------------------------
