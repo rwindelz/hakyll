@@ -1,9 +1,4 @@
 --------------------------------------------------------------------------------
-{-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE MultiParamTypeClasses  #-}
-{-# LANGUAGE TypeSynonymInstances   #-}
-{-# LANGUAGE UndecidableInstances   #-}
 module Hakyll.Core.Compiler.Select
     ( selectResource
     , selectItem
