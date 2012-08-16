@@ -1,24 +1,30 @@
+--------------------------------------------------------------------------------
 -- | Read templates in the hamlet format
---
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Hakyll.Web.Template.Read.Hamlet
     ( readHamletTemplate
     , readHamletTemplateWith
     ) where
 
+
+--------------------------------------------------------------------------------
 import Text.Hamlet (HamletSettings, defaultHamletSettings)
 import Text.Hamlet.RT
 
+
+--------------------------------------------------------------------------------
 import Hakyll.Web.Template.Internal
 
+
+--------------------------------------------------------------------------------
 -- | Read a hamlet template using the default settings
---
-readHamletTemplate :: String -> Template
+readHamletTemplate :: String -> Template String
 readHamletTemplate = readHamletTemplateWith defaultHamletSettings
 
+
+--------------------------------------------------------------------------------
 -- | Read a hamlet template using the specified settings
---
-readHamletTemplateWith :: HamletSettings -> String -> Template
+readHamletTemplateWith :: HamletSettings -> String -> Template String
 readHamletTemplateWith settings string =
     let result = parseHamletRT settings string
     in case result of
@@ -27,13 +33,14 @@ readHamletTemplateWith settings string =
             "Hakyll.Web.Template.Read.Hamlet.readHamletTemplateWith: \
             \Could not parse Hamlet file"
 
+
+--------------------------------------------------------------------------------
 -- | Convert a 'HamletRT' to a 'Template'
---
-fromHamletRT :: HamletRT  -- ^ Hamlet runtime template
-             -> Template  -- ^ Hakyll template
+fromHamletRT :: HamletRT         -- ^ Hamlet runtime template
+             -> Template String  -- ^ Hakyll template
 fromHamletRT (HamletRT sd) = Template $ map fromSimpleDoc sd
   where
-    fromSimpleDoc :: SimpleDoc -> TemplateElement
+    fromSimpleDoc :: SimpleDoc -> TemplateElement String
     fromSimpleDoc (SDRaw chunk) = Chunk chunk
     fromSimpleDoc (SDVar [var]) = Key var
     fromSimpleDoc (SDVar _) = error
