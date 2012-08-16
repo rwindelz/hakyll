@@ -16,10 +16,12 @@ module Hakyll.Core.Compiler.Internal
 
 
 --------------------------------------------------------------------------------
-import           Control.Applicative           (Applicative(..), (<$>))
-import           Control.Arrow                 (Arrow(..), ArrowChoice(..))
+import           Control.Applicative           (Alternative (..),
+                                                Applicative (..), (<$>))
+import           Control.Arrow                 (Arrow (..), ArrowChoice (..))
 import           Control.Category              (Category, id, (.))
-import           Control.Monad.Error           (ErrorT, runErrorT)
+import           Control.Monad.Error           (ErrorT, MonadError, runErrorT,
+                                                throwError)
 import           Control.Monad.Reader
 import           Data.Monoid                   (mappend, mempty)
 import           Prelude                       hiding (id, (.))
@@ -60,8 +62,8 @@ data CompilerEnvironment i = CompilerEnvironment
 --------------------------------------------------------------------------------
 -- | The compiler monad
 newtype CompilerM i a = CompilerM
-    { unCompilerM :: ErrorT String (ReaderT (CompilerEnvironment i) IO) a
-    } deriving (Monad, Functor, Applicative)
+    { unCompilerM :: ReaderT (CompilerEnvironment i) (ErrorT String IO) a
+    } deriving (Applicative, Functor, Monad, MonadError String)
 
 
 --------------------------------------------------------------------------------
@@ -82,6 +84,17 @@ instance Applicative (Compiler i a) where
     pure                                  = Compiler mempty . const . return
     ~(Compiler d1 f) <*> ~(Compiler d2 j) =
         Compiler (liftM2 (++) d1 d2) $ \x -> f x <*> j x
+
+
+--------------------------------------------------------------------------------
+instance Alternative (Compiler i a) where
+    empty                                 = Compiler mempty $ const $
+        throwError "Alternative.empty"
+    ~(Compiler d1 f) <|> ~(Compiler d2 j) =
+        Compiler (liftM2 (++) d1 d2) $ \x -> CompilerM $ do
+            env <- ask
+            res <- liftIO $ runErrorT $ runReaderT (unCompilerM $ f x) env
+            either (const $ unCompilerM $ j x) return res
 
 
 --------------------------------------------------------------------------------
@@ -125,7 +138,7 @@ runCompilerJob :: Compiler i () a
                -> Logger
                -> IO (Either String a)
 runCompilerJob compiler denv item provider routes store modified logger =
-    runReaderT (runErrorT $ unCompilerM $ compilerJob compiler ()) env
+    runErrorT $ runReaderT (unCompilerM $ compilerJob compiler ()) env
   where
     env = CompilerEnvironment denv item provider routes store modified logger
 
