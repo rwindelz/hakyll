@@ -1,61 +1,53 @@
+--------------------------------------------------------------------------------
 -- | A module containing various file utility functions
---
 module Hakyll.Core.Util.File
     ( makeDirectories
     , getRecursiveContents
-    , isFileInternal
+    , removeDirectory
     ) where
 
-import Control.Applicative ((<$>))
-import Control.Monad (forM)
-import Data.List (isPrefixOf)
-import System.Directory ( createDirectoryIfMissing, doesDirectoryExist
-                        , getDirectoryContents
-                        )
-import System.FilePath ( normalise, takeDirectory, splitPath
-                       , dropTrailingPathSeparator, (</>)
-                       )
 
-import Hakyll.Core.Configuration
+--------------------------------------------------------------------------------
+import           Control.Applicative ((<$>))
+import           Control.Monad       (forM, when)
+import           System.Directory    (createDirectoryIfMissing,
+                                      doesDirectoryExist, getDirectoryContents,
+                                      removeDirectoryRecursive)
+import           System.FilePath     (takeDirectory, (</>))
 
+
+--------------------------------------------------------------------------------
 -- | Given a path to a file, try to make the path writable by making
 --   all directories on the path.
---
 makeDirectories :: FilePath -> IO ()
 makeDirectories = createDirectoryIfMissing True . takeDirectory
 
--- | Get all contents of a directory. Note that files starting with a dot (.)
--- will be ignored.
---
-getRecursiveContents :: Bool           -- ^ Include directories?
-                     -> FilePath       -- ^ Directory to search
+
+--------------------------------------------------------------------------------
+-- | Get all contents of a directory.
+getRecursiveContents :: FilePath       -- ^ Directory to search
                      -> IO [FilePath]  -- ^ List of files found
-getRecursiveContents includeDirs topdir = do
-    topdirExists <- doesDirectoryExist topdir
-    if not topdirExists
-        then return []
-        else do
-            names <- filter isProper <$> getDirectoryContents topdir
-            paths <- forM names $ \name -> do
-                let path = normalise $ topdir </> name
-                isDirectory <- doesDirectoryExist path
-                if isDirectory then getRecursiveContents includeDirs path
-                               else return [path]
-            return $ if includeDirs then topdir : concat paths
-                                    else concat paths
+getRecursiveContents top = go ""
   where
     isProper = (`notElem` [".", ".."])
+    go dir   = do
+        dirExists <- doesDirectoryExist (top </> dir)
+        if not dirExists
+            then return []
+            else do
+                names <- filter isProper <$> getDirectoryContents (top </> dir)
+                paths <- forM names $ \name -> do
+                    let rel = dir </> name
+                    isDirectory <- doesDirectoryExist (top </> rel)
+                    if isDirectory
+                        then go rel
+                        else return [rel]
 
--- | Check if a file is meant for Hakyll internal use, i.e. if it is located in
--- the destination or store directory
---
-isFileInternal :: HakyllConfiguration  -- ^ Configuration
-               -> FilePath             -- ^ File to check
-               -> Bool                 -- ^ If the given file is internal
-isFileInternal configuration file =
-    any (`isPrefixOf` split file) dirs
-  where
-    split = map dropTrailingPathSeparator . splitPath
-    dirs = map (split . ($ configuration)) [ destinationDirectory
-                                           , storeDirectory
-                                           ]
+                return $ concat paths
+
+
+--------------------------------------------------------------------------------
+removeDirectory :: FilePath -> IO ()
+removeDirectory fp = do
+    e <- doesDirectoryExist fp
+    when e $ removeDirectoryRecursive fp

@@ -7,12 +7,12 @@ module Hakyll.Core.Store.Tests
 
 --------------------------------------------------------------------------------
 import           Data.Typeable                        (typeOf)
-import           Test.Framework
-import           Test.Framework.Providers.HUnit
-import           Test.Framework.Providers.QuickCheck2
+import           Test.Framework                       (Test, testGroup)
+import           Test.Framework.Providers.HUnit       (testCase)
+import           Test.Framework.Providers.QuickCheck2 (testProperty)
 import qualified Test.HUnit                           as H
-import           Test.QuickCheck
-import           Test.QuickCheck.Monadic
+import qualified Test.QuickCheck                      as Q
+import qualified Test.QuickCheck.Monadic              as Q
 
 
 --------------------------------------------------------------------------------
@@ -21,8 +21,8 @@ import           TestSuite.Util
 
 
 --------------------------------------------------------------------------------
-tests :: [Test]
-tests =
+tests :: Test
+tests = testGroup "Hakyll.Core.Store.Tests"
     [ testProperty "simple get . set"     simpleSetGet
     , testProperty "persistent get . set" persistentSetGet
     , testCase     "WrongType get . set"  wrongType
@@ -30,37 +30,38 @@ tests =
 
 
 --------------------------------------------------------------------------------
-simpleSetGet :: Property
-simpleSetGet = monadicIO $ do
-    key   <- pick arbitrary
-    value <- pick arbitrary
-    store <- run $ makeStoreTest
-    run $ Store.set store key (value :: String)
-    value' <- run $ Store.get store key
-    assert $ Store.Found value == value'
+simpleSetGet :: Q.Property
+simpleSetGet = Q.monadicIO $ do
+    key   <- Q.pick Q.arbitrary
+    value <- Q.pick Q.arbitrary
+    store <- Q.run newTestStore
+    Q.run $ Store.set store key (value :: String)
+    value' <- Q.run $ Store.get store key
+    Q.assert $ Store.Found value == value'
+    Q.run cleanTestEnv
 
 
 --------------------------------------------------------------------------------
-persistentSetGet :: Property
-persistentSetGet = monadicIO $ do
-    key    <- pick arbitrary
-    value  <- pick arbitrary
-    store1 <- run $ makeStoreTest
-    run $ Store.set store1 key (value :: String)
+persistentSetGet :: Q.Property
+persistentSetGet = Q.monadicIO $ do
+    key    <- Q.pick Q.arbitrary
+    value  <- Q.pick Q.arbitrary
+    store1 <- Q.run newTestStore
+    Q.run $ Store.set store1 key (value :: String)
     -- Now Create another store from the same dir to test persistence
-    store2 <- run $ makeStoreTest
-    value' <- run $ Store.get store2 key
-    assert $ Store.Found value == value'
+    store2 <- Q.run newTestStore
+    value' <- Q.run $ Store.get store2 key
+    Q.assert $ Store.Found value == value'
+    Q.run cleanTestEnv
 
 
 --------------------------------------------------------------------------------
 wrongType :: H.Assertion
 wrongType = do
-    store <- makeStoreTest
+    store <- newTestStore
     -- Store a string and try to fetch an int
     Store.set store ["foo", "bar"] ("qux" :: String)
     value <- Store.get store ["foo", "bar"] :: IO (Store.Result Int)
-    print value
     H.assert $ case value of
         Store.WrongType e t ->
             e == typeOf (undefined :: Int) &&

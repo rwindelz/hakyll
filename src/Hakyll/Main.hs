@@ -1,153 +1,106 @@
+--------------------------------------------------------------------------------
 -- | Module providing the main hakyll function and command-line argument parsing
---
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP                #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module Hakyll.Main
     ( hakyll
     , hakyllWith
     ) where
 
-import Control.Monad (when)
-import System.Directory (doesDirectoryExist, removeDirectoryRecursive)
-import System.Environment (getProgName, getArgs)
-import System.Process (system)
 
-import Hakyll.Core.Configuration
-import Hakyll.Core.Run
-import Hakyll.Core.Rules
+--------------------------------------------------------------------------------
+import           System.Console.CmdArgs
+import qualified System.Console.CmdArgs.Explicit as CA
+import           System.Environment              (getProgName)
+import           System.IO.Unsafe                (unsafePerformIO)
 
-#ifdef PREVIEW_SERVER
-import Control.Applicative ((<$>))
-import Control.Concurrent (forkIO)
-import qualified Data.Set as S
 
-import Hakyll.Core.Resource
-import Hakyll.Core.Rules.Internal
-import Hakyll.Web.Preview.Poll
-import Hakyll.Web.Preview.Server
-#endif
+--------------------------------------------------------------------------------
+import qualified Hakyll.Check                    as Check
+import qualified Hakyll.Commands                 as Commands
+import qualified Hakyll.Core.Configuration       as Config
+import qualified Hakyll.Core.Logger              as Logger
+import           Hakyll.Core.Rules
 
+
+--------------------------------------------------------------------------------
 -- | This usualy is the function with which the user runs the hakyll compiler
---
-hakyll :: RulesM a -> IO ()
-hakyll = hakyllWith defaultHakyllConfiguration
+hakyll :: Rules a -> IO ()
+hakyll = hakyllWith Config.defaultConfiguration
 
+
+--------------------------------------------------------------------------------
 -- | A variant of 'hakyll' which allows the user to specify a custom
 -- configuration
---
-hakyllWith :: HakyllConfiguration -> RulesM a -> IO ()
+hakyllWith :: Config.Configuration -> Rules a -> IO ()
 hakyllWith conf rules = do
-    args <- getArgs
-    case args of
-        ["build"]      -> build conf rules
-        ["clean"]      -> clean conf
-        ["help"]       -> help
-        ["preview"]    -> preview conf rules 8000
-        ["preview", p] -> preview conf rules (read p)
-        ["rebuild"]    -> rebuild conf rules
-        ["server"]     -> server conf 8000
-        ["server", p]  -> server conf (read p)
-        ["deploy"]     -> deploy conf
-        _              -> help
+    args' <- cmdArgs hakyllArgs
 
--- | Build the site
---
-build :: HakyllConfiguration -> RulesM a -> IO ()
-build conf rules = do
-    _ <- run conf rules
-    return ()
+    let verbosity' = if verbose args' then Logger.Debug else Logger.Message
+        check'     =
+            if internal_links args' then Check.InternalLinks else Check.All
 
--- | Remove the output directories
---
-clean :: HakyllConfiguration -> IO ()
-clean conf = do
-    remove $ destinationDirectory conf
-    remove $ storeDirectory conf
-  where
-    remove dir = do
-        putStrLn $ "Removing " ++ dir ++ "..."
-        exists <- doesDirectoryExist dir
-        when exists $ removeDirectoryRecursive dir
+    case args' of
+        Build   _   -> Commands.build conf verbosity' rules
+        Check   _ _ -> Commands.check conf verbosity' check'
+        Clean   _   -> Commands.clean conf
+        Deploy  _   -> Commands.deploy conf
+        Help    _   -> showHelp
+        Preview _ p -> Commands.preview conf verbosity' rules p
+        Rebuild _   -> Commands.rebuild conf verbosity' rules
+        Server  _ _ -> Commands.server conf (port args')
 
+
+--------------------------------------------------------------------------------
 -- | Show usage information.
---
-help :: IO ()
-help = do
-    name <- getProgName
-    mapM_ putStrLn
-        [ "ABOUT"
-        , ""
-        , "This is a Hakyll site generator program. You should always"
-        , "run it from the project root directory."
-        , ""
-        , "USAGE"
-        , ""
-        , name ++ " build           Generate the site"
-        , name ++ " clean           Clean up and remove cache"
-        , name ++ " help            Show this message"
-        , name ++ " preview [port]  Run a server and autocompile"
-        , name ++ " rebuild         Clean up and build again"
-        , name ++ " server [port]   Run a local test server"
-        , name ++ " deploy          Upload/deploy your site"
-        , ""
-        ]
+showHelp :: IO ()
+showHelp = print $ CA.helpText [] CA.HelpFormatOne $ cmdArgsMode hakyllArgs
 
-#ifndef PREVIEW_SERVER
-    previewServerDisabled
-#endif
 
--- | Preview the site
---
-preview :: HakyllConfiguration -> RulesM a -> Int -> IO ()
-#ifdef PREVIEW_SERVER
-preview conf rules port = do
-    -- Fork a thread polling for changes
-    _ <- forkIO $ previewPoll conf update
-    
-    -- Run the server in the main thread
-    server conf port
-  where
-    update = map unResource . S.toList . rulesResources <$> run conf rules
-#else
-preview _ _ _ = previewServerDisabled
-#endif
+--------------------------------------------------------------------------------
+data HakyllArgs
+    = Build   {verbose :: Bool}
+    | Check   {verbose :: Bool, internal_links :: Bool}
+    | Clean   {verbose :: Bool}
+    | Deploy  {verbose :: Bool}
+    | Help    {verbose :: Bool}
+    | Preview {verbose :: Bool, port :: Int}
+    | Rebuild {verbose :: Bool}
+    | Server  {verbose :: Bool, port :: Int}
+    deriving (Data, Typeable, Show)
 
--- | Rebuild the site
---
-rebuild :: HakyllConfiguration -> RulesM a -> IO ()
-rebuild conf rules = do
-    clean conf
-    build conf rules
 
--- | Start a server
---
-server :: HakyllConfiguration -> Int -> IO ()
-#ifdef PREVIEW_SERVER
-server conf port = do
-    let destination = destinationDirectory conf
-    staticServer destination preServeHook port
-  where
-    preServeHook _ = return ()
-#else
-server _ _ = previewServerDisabled
-#endif
+--------------------------------------------------------------------------------
+hakyllArgs :: HakyllArgs
+hakyllArgs = modes
+    [ (Build $ verboseFlag def) &= help "Generate the site"
+    , (Check (verboseFlag def) (False &= help "Check internal links only")) &=
+        help "Validate the site output"
+    , (Clean $ verboseFlag def) &= help "Clean up and remove cache"
+    , (Deploy $ verboseFlag def) &= help "Upload/deploy your site"
+    , (Help $ verboseFlag def) &= help "Show this message" &= auto
+    , (Preview (verboseFlag def) (portFlag 8000)) &=
+        help "Start a preview server and autocompile on changes"
+    , (Rebuild $ verboseFlag def) &= help "Clean and build again"
+    , (Server (verboseFlag def) (portFlag 8000)) &=
+        help "Start a preview server"
+    ] &= help "Hakyll static site compiler" &= program progName
 
--- | Upload the site
---
-deploy :: HakyllConfiguration -> IO ()
-deploy conf = do
-    _ <- system $ deployCommand conf
-    return ()
 
--- | Print a warning message about the preview serving not being enabled
---
-#ifndef PREVIEW_SERVER
-previewServerDisabled :: IO ()
-previewServerDisabled =
-    mapM_ putStrLn
-        [ "PREVIEW SERVER"
-        , ""
-        , "The preview server is not enabled in the version of Hakyll. To"
-        , "enable it, set the flag to True and recompile Hakyll."
-        , "Alternatively, use an external tool to serve your site directory."
-        ]
-#endif
+--------------------------------------------------------------------------------
+verboseFlag :: Data a => a -> a
+verboseFlag x = x &= help "Run in verbose mode"
+{-# INLINE verboseFlag #-}
+
+
+--------------------------------------------------------------------------------
+portFlag :: Data a => a -> a
+portFlag x = x &= help "Port to listen on"
+{-# INLINE portFlag #-}
+
+
+--------------------------------------------------------------------------------
+-- | This is necessary because not everyone calls their program the same...
+progName :: String
+progName = unsafePerformIO getProgName
+{-# NOINLINE progName #-}

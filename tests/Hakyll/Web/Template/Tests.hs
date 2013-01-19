@@ -1,55 +1,69 @@
+--------------------------------------------------------------------------------
 {-# LANGUAGE OverloadedStrings #-}
 module Hakyll.Web.Template.Tests
     ( tests
     ) where
 
-import Test.Framework
-import Test.HUnit hiding (Test)
 
-import qualified Data.Map as M
+--------------------------------------------------------------------------------
+import           Data.Monoid                    (mconcat)
+import           Test.Framework                 (Test, testGroup)
+import           Test.Framework.Providers.HUnit (testCase)
+import           Test.HUnit                     (Assertion, (@=?), (@?=))
 
-import Hakyll.Web.Page
-import Hakyll.Web.Template
-import Hakyll.Web.Template.Read
-import TestSuite.Util
 
-tests :: [Test]
-tests = fromAssertions "applyTemplate"
-    -- Hakyll templates
-    [ applyTemplateAssertion readTemplate applyTemplate
-        ("bar" @=?) "$foo$" [("foo", "bar")]
+--------------------------------------------------------------------------------
+import           Hakyll.Core.Item
+import           Hakyll.Core.Provider
+import           Hakyll.Web.Pandoc
+import           Hakyll.Web.Template
+import           Hakyll.Web.Template.Context
+import           Hakyll.Web.Template.Internal
+import           Hakyll.Web.Template.List
+import           TestSuite.Util
 
-    , applyTemplateAssertion readTemplate applyTemplate
-        ("$ barqux" @=?) "$$ $foo$$bar$" [("foo", "bar"), ("bar", "qux")]
 
-    , applyTemplateAssertion readTemplate applyTemplate
-        ("$foo$" @=?) "$foo$" []
-
-    -- Hamlet templates
-    , applyTemplateAssertion readHamletTemplate applyTemplate
-        (("<head><title>notice</title></head><body>A paragraph</body>" @=?) .
-            filter (/= '\n'))
-        "<head>\n\
-        \    <title>#{title}\n\
-        \<body>\n\
-        \    A paragraph\n"
-        [("title", "notice")]
-
-    -- Missing keys
-    , let missing "foo" = "bar"
-          missing "bar" = "qux"
-          missing x     = reverse x
-      in applyTemplateAssertion readTemplate (applyTemplateWith missing)
-        ("bar foo ver" @=?) "$foo$ $bar$ $rev$" [("bar", "foo")]
+--------------------------------------------------------------------------------
+tests :: Test
+tests = testGroup "Hakyll.Core.Template.Tests"
+    [ testCase "case01"                case01
+    , testCase "applyJoinTemplateList" testApplyJoinTemplateList
     ]
 
--- | Utility function to create quick template tests
---
-applyTemplateAssertion :: (String -> Template)
-                       -> (Template -> Page String -> Page String)
-                       -> (String -> Assertion)
-                       -> String
-                       -> [(String, String)]
-                       -> Assertion
-applyTemplateAssertion parser apply correct template page =
-    correct $ pageBody (apply (parser template) (fromMap $ M.fromList page))
+
+--------------------------------------------------------------------------------
+case01 :: Assertion
+case01 = do
+    store    <- newTestStore
+    provider <- newTestProvider store
+
+    out  <- resourceString provider "template.html.out"
+    tpl  <- testCompilerDone store provider "template.html" $
+        templateCompiler
+    item <- testCompilerDone store provider "example.md"    $
+        pandocCompiler >>= applyTemplate (itemBody tpl) testContext
+
+    out @=? itemBody item
+
+
+--------------------------------------------------------------------------------
+testContext :: Context String
+testContext = mconcat
+    [ functionField "echo" (\args _ -> return $ unwords args)
+    , defaultContext
+    ]
+
+
+--------------------------------------------------------------------------------
+testApplyJoinTemplateList :: Assertion
+testApplyJoinTemplateList = do
+    store    <- newTestStore
+    provider <- newTestProvider store
+    str      <- testCompilerDone store provider "item3" $
+        applyJoinTemplateList ", " tpl defaultContext [i1, i2]
+
+    str @?= "<b>Hello</b>, <b>World</b>"
+  where
+    i1  = Item "item1" "Hello"
+    i2  = Item "item2" "World"
+    tpl = Template [Chunk "<b>", Key "body", Chunk "</b>"]
