@@ -9,8 +9,21 @@ interesting resource to learn from as well. If you're using Hakyll for your
 site, and the source code is available, please notify me so I can add you to
 this list. This list has no particular ordering.
 
+## Hakyll 4
+
 - <http://jaspervdj.be/>,
   [source](https://github.com/jaspervdj/jaspervdj)
+- <http://www.imagination-land.org/>,
+  [source](https://github.com/Keruspe/blog/)
+- <http://blog.clement.delafargue.name/>,
+  [source](https://github.com/divarvel/blog)
+- <http://bneijt.nl>,
+  [source](https://github.com/bneijt/bneijt.nl)
+- <http://brianshourd.com/>,
+  [source](https://github.com/brianshourd/brianshourd.com)
+
+## Hakyll 3.X
+
 - <http://ethanschoonover.com/>,
   [source](https://github.com/altercation/ethanschoonover.com)
 - <http://extralogical.net/>,
